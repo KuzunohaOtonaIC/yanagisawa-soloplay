@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>柳澤流ソロプレイツール</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>柳澤流ソロプレイツール</h1>
+    <span class="subtitle">MTG 一人回し</span>
+  </header>
+
+  <main>
+    <!-- デッキ選択画面 -->
+    <section id="deck-view" class="deck-view">
+      <div class="panel" id="editor-panel">
+        <h2>デッキを読み込む</h2>
+
+        <div class="file-load">
+          <label class="file-btn">
+            <input id="file-input" type="file" accept=".txt,text/plain" multiple>
+            txtファイルから読み込む
+          </label>
+          <span class="hint">ファイル名がデッキ名になります。ここにドラッグ＆ドロップしてもOK（複数可）</span>
+        </div>
+
+        <div class="divider"><span>または貼り付け</span></div>
+
+        <label class="field">
+          <span>デッキ名</span>
+          <input id="deck-name" type="text" placeholder="例: Mono Red Prison" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>デッキリスト（MTGO形式）</span>
+          <textarea id="deck-text" spellcheck="false" placeholder="4 Ancient Tomb&#10;4 City of Traitors&#10;4 Chalice of the Void&#10;...&#10;&#10;SIDEBOARD:&#10;3 Leyline of the Void"></textarea>
+        </label>
+        <div class="row">
+          <button id="save-btn" class="primary" type="button">読み込んで保存</button>
+          <button id="clear-btn" type="button">クリア</button>
+        </div>
+        <div id="parse-message" class="message" role="status"></div>
+      </div>
+
+      <div class="panel">
+        <h2>保存済みデッキ</h2>
+        <div class="row">
+          <select id="deck-select" aria-label="保存済みデッキ"></select>
+          <button id="edit-btn" type="button">編集</button>
+          <button id="delete-btn" class="danger" type="button">削除</button>
+        </div>
+
+        <div class="row sort-row">
+          <span class="sort-label">並び順</span>
+          <div class="segmented" role="radiogroup" aria-label="並び順">
+            <button type="button" data-sort="type" role="radio">カード種類</button>
+            <button type="button" data-sort="ja" role="radio">日本語名</button>
+            <button type="button" data-sort="en" role="radio">英語名</button>
+          </div>
+        </div>
+
+        <div id="card-status" class="card-status" role="status"></div>
+        <div id="deck-detail" class="deck-detail"></div>
+
+        <div class="start-box">
+          <label class="field-inline">
+            <span>カード画像</span>
+            <select id="image-mode">
+              <option value="ja">表示する（日本語版を優先）</option>
+              <option value="en">表示する（英語版）</option>
+              <option value="none">表示しない（文字だけ）</option>
+            </select>
+          </label>
+          <button id="start-btn" class="primary large" type="button">開始</button>
+        </div>
+        <div class="row cache-row">
+          <button id="diagnose-btn" class="link-btn" type="button">Scryfall 接続チェック</button>
+          <button id="clear-cache-btn" class="link-btn" type="button">カード情報のキャッシュを削除</button>
+        </div>
+        <div id="diagnose-result" class="diagnose" role="status" hidden></div>
+      </div>
+
+      <p class="disclaimer">
+        本アプリは非公式のファンコンテンツです。Wizards of the Coast の承認・後援を受けたものではありません。<br>
+        カード情報・画像は <a href="https://scryfall.com/" target="_blank" rel="noopener noreferrer">Scryfall</a> より取得しています。
+      </p>
+    </section>
+
+    <!-- 一人回し画面 -->
+    <section id="game-view" class="game-view" hidden>
+      <div class="toolbar">
+        <button id="back-btn" type="button">← デッキ選択へ戻る</button>
+        <strong id="game-deck-name" class="game-deck-name"></strong>
+        <span class="turn">ターン <strong id="turn-count">1</strong></span>
+        <button id="undo-btn" type="button" title="直前の操作を取り消します（Z キー / Ctrl+Z）">↶ 元に戻す</button>
+        <button id="next-turn-btn" type="button" title="場のカードをアンタップし、ターン数を1増やして1枚引きます">次のターンへ（アンタップ＋1枚引く）</button>
+        <button id="restart-btn" class="primary" type="button">新しいゲーム</button>
+      </div>
+
+      <div class="board">
+        <div class="board-main">
+          <div id="mulligan-bar" class="mulligan-bar" hidden>
+            <p id="mulligan-text" class="mulligan-text"></p>
+            <div class="row">
+              <button id="mulligan-btn" type="button">マリガン</button>
+              <button id="keep-btn" class="primary" type="button">キープ</button>
+              <button id="bottom-btn" class="primary" type="button">決定</button>
+            </div>
+          </div>
+
+          <section class="zone">
+            <div class="zone-head">
+              <h3>手札 <span id="hand-count" class="count"></span></h3>
+              <span id="hand-hint" class="hint">クリックで場に出す</span>
+            </div>
+            <div id="hand" class="card-row">
+              <button id="draw-btn" class="draw-card" type="button" title="ライブラリーの一番上を1枚引きます（D キーでも引けます）">
+                <span class="draw-label">ドロー</span>
+                <span id="draw-left" class="draw-left"></span>
+                <span class="draw-key">D キー</span>
+              </button>
+            </div>
+          </section>
+          <section class="zone">
+            <div class="zone-head">
+              <h3>場 <span id="battlefield-count" class="count"></span></h3>
+              <span class="hint">カードをクリックでタップ／アンタップ</span>
+            </div>
+            <div id="battlefield" class="card-row battlefield"></div>
+          </section>
+          <div class="pile-row">
+            <section class="zone pile">
+              <div class="zone-head">
+                <h3>墓地 <span id="graveyard-count" class="count"></span></h3>
+                <span class="hint">ボタンで手札・場・ライブラリーへ</span>
+              </div>
+              <ol id="graveyard" class="pile-list"></ol>
+            </section>
+            <section class="zone pile">
+              <div class="zone-head">
+                <h3>追放 <span id="exile-count" class="count"></span></h3>
+                <span class="hint">ボタンで手札・場・ライブラリーへ</span>
+              </div>
+              <ol id="exile" class="pile-list"></ol>
+            </section>
+          </div>
+        </div>
+
+        <section class="zone zone-library">
+          <div class="zone-head">
+            <h3>ライブラリー <span id="library-count" class="count"></span></h3>
+          </div>
+          <p class="hint">上から順に表示。カード名のクリックで手札に加えてシャッフル。「上へ」「下へ」で一番上／一番下に移動</p>
+          <ol id="library" class="library-list"></ol>
+        </section>
+      </div>
+      <div id="game-toast" class="toast" role="status" aria-live="polite"></div>
+      <div id="card-preview" class="card-preview" aria-hidden="true"><img alt=""></div>
+    </section>
+  </main>
+
+  <script src="js/parser.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/cards.js"></script>
+  <script src="js/scryfall.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
