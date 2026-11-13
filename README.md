@@ -1,6 +1,6 @@
 # 柳澤流ソロプレイツール
 
-MTG の一人回し（ゴールドフィッシュ）用 Web アプリです。ビルドもサーバーも不要です。
+MTG の一人回し用 Web アプリです。ビルドもサーバーも不要です。
 
 **公開版: https://kuzunohaotonaic.github.io/yanagisawa-soloplay/**
 
