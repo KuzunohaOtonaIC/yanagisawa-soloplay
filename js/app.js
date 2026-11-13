@@ -74,7 +74,9 @@
   }
 
   function selectedDeck() {
-    return el.deckSelect.value ? DeckStore.get(el.deckSelect.value) : null;
+    const id = el.deckSelect.value;
+    if (!id) return null;
+    return MTG.isPresetId(id) ? MTG.getPreset(id) : DeckStore.get(id);
   }
 
   function deckCardNames(deck) {
@@ -199,17 +201,19 @@
 
   // ---------- デッキ一覧 ----------
 
+  /** デッキ一覧：「組み込みデッキ」と「保存したデッキ」に分けて表示 */
   function renderDeckSelect(selectId) {
-    const decks = DeckStore.list().sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-    el.deckSelect.replaceChildren();
-    if (decks.length === 0) {
-      el.deckSelect.append(h('option', { value: '', textContent: '（保存済みデッキはありません）' }));
-    } else {
-      decks.forEach((d) => {
-        el.deckSelect.append(h('option', { value: d.id, textContent: `${d.name}（${countCards(d.main)}枚）` }));
-      });
-      el.deckSelect.value = decks.some((d) => d.id === selectId) ? selectId : decks[0].id;
-    }
+    const presets = MTG.presetDecks();
+    const saved = DeckStore.list().sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    const option = (d) => h('option', { value: d.id, textContent: `${d.name}（${countCards(d.main)}枚）` });
+
+    el.deckSelect.replaceChildren(
+      h('optgroup', { label: '組み込みデッキ' }, presets.map(option)),
+      h('optgroup', { label: '保存したデッキ' },
+        saved.length ? saved.map(option) : h('option', { value: '', disabled: true, textContent: '（まだありません）' })),
+    );
+    const all = [...presets, ...saved];
+    el.deckSelect.value = all.some((d) => d.id === selectId) ? selectId : all[0].id;
     onDeckSelected();
   }
 
@@ -288,6 +292,7 @@
       return;
     }
     el.deckDetail.replaceChildren(
+      ...(deck.preset ? [h('p', { className: 'preset-note' }, '組み込みデッキです。「編集」で読み込むと、手を加えて自分のデッキとして保存できます。')] : []),
       ...renderCardSection('メインデッキ', deck.main),
       ...renderCardSection('サイドボード', deck.side),
     );
@@ -296,7 +301,8 @@
   function onDeckSelected() {
     const deck = selectedDeck();
     el.editBtn.disabled = !deck;
-    el.deleteBtn.disabled = !deck;
+    el.deleteBtn.disabled = !deck || !!deck.preset;
+    el.deleteBtn.title = deck && deck.preset ? '組み込みデッキは削除できません' : '';
     el.startBtn.disabled = !deck || countCards(deck.main) === 0;
     if (deck) DeckStore.setSelectedId(deck.id);
     renderDeckDetail();
@@ -337,7 +343,7 @@
 
   function onDelete() {
     const deck = selectedDeck();
-    if (!deck || !confirm(`「${deck.name}」を削除しますか？`)) return;
+    if (!deck || deck.preset || !confirm(`「${deck.name}」を削除しますか？`)) return;
     DeckStore.remove(deck.id);
     renderDeckSelect(null);
   }

@@ -42,8 +42,13 @@ function fakeScryfall() {
       if (q.length > 1000) return json(400, { object: 'error', status: 400, details: 'Your search contains unclosed parentheses.' });
       const ids = [...q.matchAll(/oracleid:([\w-]+)/g)].map((m) => m[1])
         .concat([...q.matchAll(/!"([^"]+)"/g)].map((m) => (CARDS[lookupKey(m[1])] || {}).oracle_id));
+      const unique = new URL(url).searchParams.get('unique');
       const data = Object.values(CARDS)
         .filter((c) => ids.includes(c.oracle_id) && (c.ja || c.jaFaces))
+        // jaNamedOnlyInPrints: 代表の版（unique=cards）には日本語名がなく、全部の版（unique=prints）の中にだけある
+        .flatMap((c) => (c.jaNamedOnlyInPrints
+          ? (unique === 'prints' ? [{ ...c, ja: null, jaFaces: null }, c] : [{ ...c, ja: null, jaFaces: null }])
+          : [c]))
         .map((c) => ({
           name: c.name, lang: 'ja', oracle_id: c.oracle_id, printed_name: c.ja,
           image_status: c.oracle_id === 'o-vault' ? 'missing' : 'highres_scan',
@@ -72,7 +77,7 @@ test('種類と日本語名を取得し、キャッシュ済みのカードは�
   const names = ['Ancient Tomb', 'Fire // Ice', "Lim-Dul's Vault", 'Mox Diamond', 'Typo Cardd'];
   const result = await service.ensure(names);
   assert.deepEqual(result.notFound, ['Typo Cardd']);
-  assert.equal(calls.length, 2); // collection 1回 + search 1回
+  assert.equal(calls.length, 3); // collection 1回 + search 1回 + 日本語名のない Mox Diamond を全部の版から探す 1回
 
   assert.deepEqual(
     [service.get('Ancient Tomb').jaName, service.get('Ancient Tomb').category],
@@ -86,20 +91,20 @@ test('種類と日本語名を取得し、キャッシュ済みのカードは�
 
   // 2回目は問い合わせなし
   await service.ensure(names);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 
   // ページを開き直しても（= 新しいサービス）キャッシュが使われる
   const again = createCardService({ fetchImpl, storage, delayMs: 0, networkRetryDelaysMs: [] });
   assert.equal(again.get('Ancient Tomb').jaName, '古えの墳墓');
   assert.deepEqual(again.missing(names), []);
   await again.ensure([...names, 'Ancient Tomb']);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 
   // 新しいカードだけ問い合わせる
   CARDS['blood moon'] = { name: 'Blood Moon', type_line: 'Enchantment', cmc: 3, oracle_id: 'o-moon', ja: '血染めの月' };
   await again.ensure([...names, 'Blood Moon']);
-  assert.equal(calls.length, 4);
-  assert.deepEqual(JSON.parse(calls[2].init.body).identifiers, [{ name: 'Blood Moon' }]);
+  assert.equal(calls.length, 5);
+  assert.deepEqual(JSON.parse(calls[3].init.body).identifiers, [{ name: 'Blood Moon' }]);
   assert.equal(again.get('Blood Moon').jaName, '血染めの月');
 });
 
@@ -256,4 +261,20 @@ test('日本語名の検索文は1000文字を超えないように分ける（�
   const queries = japaneseSearchQueries(ids);
   assert.equal(queries.reduce((n, x) => n + x.count, 0), 50);
   assert.ok(queries.every((x) => x.q.length <= 900));
+});
+
+test('代表の版に日本語名がないカードは、全部の版から日本語名を探す', async () => {
+  CARDS['shelldock isle'] = { name: 'Shelldock Isle', type_line: 'Land', cmc: 0, oracle_id: 'o-shelldock', ja: '殻船着の島', jaNamedOnlyInPrints: true };
+  CARDS['scrubland'] = { name: 'Scrubland', type_line: 'Land — Plains Swamp', cmc: 0, oracle_id: 'o-scrub' }; // 日本語版なし
+  const fake = fakeScryfall();
+  const service = createCardService({ fetchImpl: fake.fetchImpl, storage: memoryStorage(), delayMs: 0, networkRetryDelaysMs: [] });
+  await service.ensure(['Shelldock Isle', 'Scrubland', 'Ancient Tomb']);
+  assert.equal(service.get('Shelldock Isle').jaName, '殻船着の島');
+  assert.equal(service.get('Scrubland').jaName, null);
+  assert.equal(service.get('Ancient Tomb').jaName, '古えの墳墓');
+  const searches = fake.calls.filter((c) => c.url.includes('/cards/search')).map((c) => new URL(c.url).searchParams);
+  assert.deepEqual(searches.map((p) => p.get('unique')), ['cards', 'prints']);
+  // 2回目の検索は日本語名が取れなかったカードだけ
+  assert.ok(!searches[1].get('q').includes('o-tomb'));
+  assert.ok(searches[1].get('q').includes('o-shelldock') && searches[1].get('q').includes('o-scrub'));
 });

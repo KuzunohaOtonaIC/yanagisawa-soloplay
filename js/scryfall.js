@@ -21,8 +21,8 @@
   const MAX_QUERY_LENGTH = 900;
   const NOT_FOUND_TTL_MS = 24 * 60 * 60 * 1000;
   const MAX_RETRIES = 2;
-  /** キャッシュの形式。これより古い形式のカードは取得し直す（v2 で画像を追加） */
-  const SCHEMA = 2;
+  /** キャッシュの形式。これより古い形式のカードは取得し直す（v2 で画像を追加、v3 で日本語名を全部の版から探すように） */
+  const SCHEMA = 3;
 
   /** 分割・両面カードは第1面の名前（"Fire // Ice" → "Fire"）。Scryfall はこの名前で検索できる */
   function frontFace(name) {
@@ -293,24 +293,37 @@
       const oracleIds = [...byOracle.keys()];
       done = 0;
       track('ja', 0, oracleIds.length);
-      for (const { q, count } of japaneseSearchQueries(oracleIds)) {
-        let url = `${API}/cards/search?${new URLSearchParams({ q, unique: 'cards' })}`;
-        while (url) {
-          const body = await request(url);
-          if (!body) break;
-          (body.data || []).forEach((card) => {
-            const ja = japaneseNameOf(card);
-            const image = imageOf(card);
-            (byOracle.get(oracleIdOf(card)) || []).forEach((e) => {
-              if (ja) e.jaName = ja;
-              if (image) e.imageJa = image;
+      /** 日本語版を検索して、日本語名（と画像）を入れる。unique: 'cards' は代表の1版、'prints' は全部の版 */
+      const searchJapanese = async (ids, unique, onChunk) => {
+        for (const { q, count } of japaneseSearchQueries(ids)) {
+          let url = `${API}/cards/search?${new URLSearchParams({ q, unique })}`;
+          while (url) {
+            const body = await request(url);
+            if (!body) break;
+            (body.data || []).forEach((card) => {
+              const ja = japaneseNameOf(card);
+              const image = imageOf(card);
+              (byOracle.get(oracleIdOf(card)) || []).forEach((e) => {
+                if (e.jaName) return; // すでに日本語名が取れている
+                if (ja) e.jaName = ja;
+                if (image && (ja || !e.imageJa)) e.imageJa = image;
+              });
             });
-          });
-          url = body.has_more ? body.next_page : null;
+            url = body.has_more ? body.next_page : null;
+          }
+          if (onChunk) onChunk(count);
         }
+      };
+
+      await searchJapanese(oracleIds, 'cards', (count) => {
         done += count;
         track('ja', done, oracleIds.length);
-      }
+      });
+
+      // 代表の版に日本語名がないカード（例: Shelldock Isle は名前の入っていない日本語版のシークレットレアが代表になる）は、
+      // 全部の日本語版から日本語名のあるものを探す。日本語版が1つもないカードは結果0件で終わる
+      const withoutName = oracleIds.filter((id) => byOracle.get(id).every((e) => !e.jaName));
+      if (withoutName.length) await searchJapanese(withoutName, 'prints');
 
       // 日本語名まで取れたものだけキャッシュに入れる（途中で失敗したら次回やり直す）
       found.forEach((entry, k) => { cache[k] = entry; });

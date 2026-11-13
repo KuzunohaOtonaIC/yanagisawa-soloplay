@@ -131,6 +131,7 @@ textarea#deck-text {
 .disclaimer a { color: inherit; }
 
 .deck-detail { margin-top: 12px; }
+.preset-note { margin: 0 0 4px; padding: 6px 10px; border-radius: var(--radius); background: var(--ok-bg); font-size: .82rem; }
 .deck-detail .empty { color: var(--muted); }
 .deck-detail h4 { margin: 12px 0 4px; font-size: .95rem; }
 .deck-detail h4 .count { color: var(--muted); font-weight: normal; }
