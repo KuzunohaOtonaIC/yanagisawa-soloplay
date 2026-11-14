@@ -1,5 +1,6 @@
 /*
  * 組み込みデッキ（誰が開いても最初からデッキ一覧に出る。削除はできない）
+ * 先頭のデッキが、初めて開いた人に表示される既定のデッキ
  * text は MTGO 形式。読み込み時に parser.js で解析する
  */
 (function (root) {
@@ -11,45 +12,44 @@
 
   const PRESETS = [
     {
-      id: 'preset:white-curse',
-      name: "柳澤流ホワイトカース",
+      id: 'preset:jujutsu-shosen',
+      name: '柳澤流呪術唱専',
       text: `
-4 Herald of Amity
-4 Stoneforge Mystic
-3 Grand Abolisher
-3 Phelia, Exuberant Shepherd
-3 Witch Enchanter
-2 Nevermore
-4 Overwhelming Splendor
-4 Curse of Misfortunes
-3 Glasswing Grace
-1 Curse of Death's Hold
-1 Cruel Reality
-4 Chalice of the Void
-4 Lotus Petal
-3 Chrome Mox
-2 Meteor Sword
-1 Scroll Rack
-1 Kaldra Compleat
 4 Ancient Tomb
-3 Plains
-1 Flooded Strand
-1 Arid Mesa
+2 Atraxa, Grand Unifier
+2 Brainsurge
+4 Chalice of the Void
+3 Chrome Mox
+1 City of Traitors
+1 Cruel Reality
+1 Curse of Death's Hold
+4 Curse of Misfortunes
+1 Emrakul, the Aeons Torn
+3 Flooded Strand
+4 Force of Will
 1 Gemstone Caverns
+2 Glasswing Grace
+4 Herald of Amity
+1 Island
 1 Karakas
+4 Lotus Petal
+4 Overwhelming Splendor
+1 Plains
+1 Scroll Rack
 1 Scrubland
-1 Urborg, Tomb of Yawgmoth
+4 Show and Tell
+3 Sink into Stupor
+1 Tundra
+2 Witch Enchanter
 
 SIDEBOARD:
-3 Rest in Peace
-2 Sanctum Prelate
+1 Curse of Exhaustion
 2 Disruptor Flute
-2 Defense Grid
-1 Ghostly Prison
-2 Sheltered by Ghosts
-1 Batterskull
-1 Lion Sash
+2 Engineered Explosives
+4 Rest in Peace
+1 Sanctum Prelate
 1 The Stone Brain
+4 Voice of Victory
 `,
     },
     {
@@ -148,6 +148,11 @@ Sideboard
     return cache;
   }
 
+  /** 初めて開いた人に表示するデッキ（先頭の組み込みデッキ） */
+  function defaultPreset() {
+    return presetDecks()[0];
+  }
+
   function isPresetId(id) {
     return typeof id === 'string' && id.startsWith('preset:');
   }
@@ -156,7 +161,7 @@ Sideboard
     return presetDecks().find((d) => d.id === id) || null;
   }
 
-  const api = { presetDecks, isPresetId, getPreset };
+  const api = { presetDecks, defaultPreset, isPresetId, getPreset };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;

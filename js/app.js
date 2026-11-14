@@ -213,8 +213,17 @@
         saved.length ? saved.map(option) : h('option', { value: '', disabled: true, textContent: '（まだありません）' })),
     );
     const all = [...presets, ...saved];
-    el.deckSelect.value = all.some((d) => d.id === selectId) ? selectId : all[0].id;
+    el.deckSelect.value = all.some((d) => d.id === selectId) ? selectId : fallbackDeckId(saved);
     onDeckSelected();
+  }
+
+  /**
+   * 覚えていたデッキが見つからないとき（初めて開いた・削除した・組み込みデッキが入れ替わった）に開くデッキ：
+   * 最後に保存した自分のデッキ。自分のデッキがなければ既定の組み込みデッキ
+   */
+  function fallbackDeckId(saved) {
+    const latest = saved.slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0];
+    return latest ? latest.id : MTG.defaultPreset().id;
   }
 
   function cardLine(item, showType) {
