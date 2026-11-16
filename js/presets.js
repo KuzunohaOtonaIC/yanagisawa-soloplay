@@ -25,27 +25,26 @@
 1 Curse of Death's Hold
 4 Curse of Misfortunes
 4 Defense Grid
-1 Emrakul, the Aeons Torn
-3 Flooded Strand
-1 Gemstone Caverns
+4 Flooded Strand
 4 Herald of Amity
 2 Island
 4 Lotus Petal
 4 Overwhelming Splendor
 1 Plains
-1 Scroll Rack
+1 Raph & Mikey, Troublemakers
+1 Savannah
+2 Scroll Rack
 1 Scrubland
 4 Show and Tell
 4 Sink into Stupor
 1 Tundra
 1 Urborg, Tomb of Yawgmoth
-2 Witch Enchanter
 
 SIDEBOARD:
-1 Curse of Exhaustion
 2 Disruptor Flute
 2 Engineered Explosives
 4 Force of Will
+1 Propaganda
 4 Rest in Peace
 1 Sanctum Prelate
 1 The Stone Brain
