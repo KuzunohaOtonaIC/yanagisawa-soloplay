@@ -92,12 +92,18 @@ select, input[type="text"], textarea {
   padding: 16px;
 }
 .panel h2 { margin: 0 0 12px; font-size: 1.05rem; }
+.panel-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.panel-head h2 { margin: 0; align-self: center; }
+.field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.field-head label { font-size: .9rem; color: var(--muted); }
+textarea#deck-text.expanded { height: 460px; }
 
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .field span { font-size: .9rem; color: var(--muted); }
 
 textarea#deck-text {
-  min-height: 320px;
+  height: 130px;
+  min-height: 90px;
   resize: vertical;
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: .9rem;
@@ -166,12 +172,8 @@ textarea#deck-text {
 .start-box {
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
 }
 .field-inline { display: flex; flex-direction: column; gap: 4px; }
 .field-inline span { font-size: .85rem; color: var(--muted); }

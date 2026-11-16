@@ -32,10 +32,13 @@
           <span>デッキ名</span>
           <input id="deck-name" type="text" placeholder="例: Mono Red Prison" autocomplete="off">
         </label>
-        <label class="field">
-          <span>デッキリスト（MTGO形式）</span>
+        <div class="field">
+          <div class="field-head">
+            <label for="deck-text">デッキリスト（MTGO形式）</label>
+            <button id="expand-btn" class="link-btn" type="button" aria-controls="deck-text" aria-expanded="false">広げる ▼</button>
+          </div>
           <textarea id="deck-text" spellcheck="false" placeholder="4 Ancient Tomb&#10;4 City of Traitors&#10;4 Chalice of the Void&#10;...&#10;&#10;SIDEBOARD:&#10;3 Leyline of the Void"></textarea>
-        </label>
+        </div>
         <div class="row">
           <button id="save-btn" class="primary" type="button">読み込んで保存</button>
           <button id="clear-btn" type="button">クリア</button>
@@ -44,9 +47,22 @@
       </div>
 
       <div class="panel">
-        <h2>保存済みデッキ</h2>
+        <div class="panel-head">
+          <h2>デッキ一覧</h2>
+          <div class="start-box">
+            <label class="field-inline">
+              <span>カード画像</span>
+              <select id="image-mode">
+                <option value="ja">表示する（日本語版を優先）</option>
+                <option value="en">表示する（英語版）</option>
+                <option value="none">表示しない（文字だけ）</option>
+              </select>
+            </label>
+            <button id="start-btn" class="primary large" type="button">開始</button>
+          </div>
+        </div>
         <div class="row">
-          <select id="deck-select" aria-label="保存済みデッキ"></select>
+          <select id="deck-select" aria-label="デッキ一覧"></select>
           <button id="edit-btn" type="button">編集</button>
           <button id="delete-btn" class="danger" type="button">削除</button>
         </div>
@@ -63,17 +79,6 @@
         <div id="card-status" class="card-status" role="status"></div>
         <div id="deck-detail" class="deck-detail"></div>
 
-        <div class="start-box">
-          <label class="field-inline">
-            <span>カード画像</span>
-            <select id="image-mode">
-              <option value="ja">表示する（日本語版を優先）</option>
-              <option value="en">表示する（英語版）</option>
-              <option value="none">表示しない（文字だけ）</option>
-            </select>
-          </label>
-          <button id="start-btn" class="primary large" type="button">開始</button>
-        </div>
         <div class="row cache-row">
           <button id="diagnose-btn" class="link-btn" type="button">Scryfall 接続チェック</button>
           <button id="clear-cache-btn" class="link-btn" type="button">カード情報のキャッシュを削除</button>

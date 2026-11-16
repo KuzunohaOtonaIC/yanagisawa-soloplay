@@ -16,6 +16,7 @@
     fileInput: $('file-input'),
     deckName: $('deck-name'),
     deckText: $('deck-text'),
+    expandBtn: $('expand-btn'),
     saveBtn: $('save-btn'),
     clearBtn: $('clear-btn'),
     parseMessage: $('parse-message'),
@@ -370,9 +371,18 @@
     });
   }
 
+  /** デッキリストの入力欄を広げる／狭める */
+  function setDeckTextExpanded(expanded) {
+    el.deckText.classList.toggle('expanded', expanded);
+    el.deckText.style.height = ''; // 手で大きさを変えていても、ボタンの大きさに戻す
+    el.expandBtn.textContent = expanded ? 'たたむ ▲' : '広げる ▼';
+    el.expandBtn.setAttribute('aria-expanded', String(expanded));
+  }
+
   function onEdit() {
     const deck = selectedDeck();
     if (!deck) return;
+    setDeckTextExpanded(true); // 編集するときは広げて全体を見せる
     el.deckName.value = deck.name;
     el.deckText.value = deckToText(deck);
     el.parseMessage.replaceChildren();
@@ -1305,6 +1315,7 @@
   // ---------- 初期化 ----------
 
   el.saveBtn.addEventListener('click', onSave);
+  el.expandBtn.addEventListener('click', () => setDeckTextExpanded(!el.deckText.classList.contains('expanded')));
   el.clearBtn.addEventListener('click', () => {
     el.deckName.value = '';
     el.deckText.value = '';
