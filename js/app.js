@@ -1299,6 +1299,15 @@
     const open = el.nextGameMenu.hidden;
     el.nextGameMenu.hidden = !open;
     el.nextGameBtn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      // 入れ替えをしていないときは、そのことを2行目に添える
+      const label = '現在の構成を引き継いで開始';
+      if (MTG.isOriginal(match.deck, match.config)) {
+        el.nextStartBtn.replaceChildren(label, h('br'), h('small', { className: 'menu-note' }, '(今はメインのまま)'));
+      } else {
+        el.nextStartBtn.replaceChildren(label);
+      }
+    }
   }
 
   let sideCollapsed = !!Prefs.get('sideCollapsed', false);

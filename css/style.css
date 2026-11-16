@@ -659,6 +659,7 @@ html, body, #hand, #hand * { overflow-anchor: none; }
 .next-game-menu[hidden] { display: none; }
 .next-game-title { margin: 0 0 2px; font-size: .8rem; color: var(--muted); }
 .next-game-menu button { text-align: left; white-space: nowrap; }
+.next-game-menu .menu-note { font-size: .78rem; opacity: .85; }
 
 /* サイドプラン */
 .sb-plan { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(0, 0, 0, .15); }
