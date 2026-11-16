@@ -1,0 +1,28 @@
+# 柳澤流ソロプレイツール
+
+MTG の一人回し（ゴールドフィッシュ）用の静的 Web アプリ。公開版: https://kuzunohaotonaic.github.io/yanagisawa-soloplay/
+
+## 設計方針（最優先）
+
+- **一人回しで構築を確かめるための道具**。初手・マリガン・ドロー、サイドボーディング後の構成を手軽に試せることが目的
+- **実戦の再現に寄り過ぎた機能は入れない**（対戦相手の再現、ルール処理の強制、先手・後手の管理など）。手で操作すれば済むことは手で操作してもらう
+- 新しい機能の要望が実戦寄りに見えるときは、作る前にこの方針と照らして確認する
+- 画面の文言はすべて日本語。利用者はプログラミングに詳しくない前提で、説明もやさしい日本語にする
+
+## 構成
+
+- ビルド不要。`index.html` + `css/style.css` + `js/*.js`（ES Modules は使わず、各ファイルが `window.MTG` に機能を公開）
+- 画面と切り離した純粋な処理：`js/parser.js`（デッキリスト）/ `js/game.js`（ゲーム状態）/ `js/sideboard.js` / `js/sidePlans.js` / `js/cards.js`（種類判定・ソート）/ `js/scryfall.js`（取得とキャッシュ）
+- 画面：`js/app.js`。保存：`js/storage.js`（localStorage、キーの接頭辞 `mtg-goldfish:` は互換のため変えない）
+- 組み込みデッキ・組み込みサイドプラン：`js/presets.js`（デッキリストは MTGO 形式の txt をそのまま埋め込む）
+- 経緯と機能の一覧：`PLAN.md`
+
+## テスト
+
+- 単体テスト：`npm test`（node:test。新しい純粋な処理にはテストを足す）
+- 画面の確認は Playwright（Chromium は導入済み）で `file:///.../index.html` を開いて行う
+
+## 公開
+
+- `main` に push すると GitHub Pages が自動で公開（数分）。配布用 ZIP（`YanagisawaSoloplay.zip`、中のフォルダ名も `YanagisawaSoloplay`）は git に入れない
+- Scryfall API：検索文は約1000文字までなので分割して問い合わせる。リクエスト間隔は 500ms 以上

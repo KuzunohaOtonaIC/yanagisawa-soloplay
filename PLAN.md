@@ -1,13 +1,22 @@
 # 柳澤流ソロプレイツール 実装計画
 
-## 方針
+## 設計方針（機能を足すかどうかの判断基準）
+
+- **一人回しで構築を確かめるための道具**。初手・マリガン・ドローの流れ、サイドボーディング後の構成を手軽に試せることが目的
+- **実戦の再現に寄り過ぎた機能は入れない**（対戦相手の再現、ゲームのルール処理・強制、先手・後手の管理など）。
+  プレイヤーが手で操作すれば済むことは、手で操作してもらう
+- 迷ったら「構築の確認が速く・楽になるか」で判断する
+
+## 技術方針
 
 - **ビルド不要の静的Webアプリ**（HTML + CSS + 素のJavaScript）。`index.html` をブラウザで開くだけで動く。
   - ES Modules は `file://` で読み込めないブラウザがあるため、通常の `<script>` で読み込み、
     各ファイルは `window.MTG` 名前空間に機能を公開する。
 - **保存先はブラウザの localStorage**（サーバー不要）。
   - デッキ: `mtg-goldfish:decks:v1`
-  - Scryfall キャッシュ: `mtg-goldfish:cards:v1`（段階2）
+  - Scryfall キャッシュ: `mtg-goldfish:cards:v1`
+  - サイドプラン: `mtg-goldfish:sideplans:v1`
+  - 保存キーの接頭辞 `mtg-goldfish:` は、既存の保存データを残すため変えない
 - **Scryfall はブラウザから直接呼ぶ**（Scryfall API は CORS 対応）。
 - 乱数は `crypto.getRandomValues` + Fisher–Yates シャッフル（偏りなし）。
 - 純粋なロジック（パーサー、シャッフル、ゲーム状態）は DOM から分離し、Node の `node:test` で単体テストする。
@@ -15,7 +24,7 @@
 ## ファイル構成
 
 ```
-mtg-goldfish/
+yanagisawa-soloplay/
 ├── index.html
 ├── css/style.css
 ├── js/
