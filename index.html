@@ -92,15 +92,44 @@
       <div class="toolbar">
         <button id="back-btn" type="button">← デッキ選択へ戻る</button>
         <strong id="game-deck-name" class="game-deck-name"></strong>
-        <span class="turn">ターン <strong id="turn-count">1</strong></span>
-        <button id="undo-btn" type="button" title="直前の操作を取り消します（Z キー / Ctrl+Z）">↶ 元に戻す</button>
-        <button id="next-turn-btn" type="button" title="場のカードをアンタップし、ターン数を1増やして1枚引きます">次のターンへ（アンタップ＋1枚引く）</button>
-        <button id="restart-btn" class="primary" type="button">新しいゲーム</button>
+        <span id="game-number" class="game-number"></span>
+        <span class="turn game-only">ターン <strong id="turn-count">1</strong></span>
+        <button id="undo-btn" class="game-only" type="button" title="直前の操作を取り消します（Z キー / Ctrl+Z）">↶ 元に戻す</button>
+        <button id="next-turn-btn" class="game-only" type="button" title="場のカードをアンタップし、ターン数を1増やして1枚引きます">次のターンへ（アンタップ＋1枚引く）</button>
+        <div class="next-game game-only">
+          <button id="next-game-btn" class="primary" type="button" aria-haspopup="true" aria-expanded="false">次のゲーム ▾</button>
+          <div id="next-game-menu" class="next-game-menu" hidden>
+            <p class="next-game-title">次のゲームのデッキ構成</p>
+            <button id="next-keep-btn" type="button">サイド後の構成を引き継ぐ</button>
+            <button id="next-reset-btn" type="button">元のリストに戻す</button>
+          </div>
+        </div>
       </div>
 
       <div class="board">
         <div class="board-main">
-          <section class="zone">
+          <!-- サイドボーディング（ゲーム開始前） -->
+          <section id="sb-panel" class="sb-panel sb-only">
+            <div class="sb-bar">
+              <div class="sb-info">
+                <h3>サイドボーディング</h3>
+                <p class="sb-counts">メイン <strong id="sb-main-total"></strong> 枚 ／ サイド <strong id="sb-side-total"></strong> 枚</p>
+                <p class="hint">メインのカードをクリックでサイドへ、サイドのカードをクリックでメインへ（1枚ずつ）。入れ替えは1対1でなくてもかまいません。</p>
+              </div>
+              <button id="sb-start-btn" class="primary large" type="button">ゲーム開始<br><small>シャッフルして7枚引く</small></button>
+            </div>
+            <ul id="sb-problems" class="sb-problems"></ul>
+            <div id="sb-diff" class="sb-diff"></div>
+          </section>
+          <section class="zone sb-only">
+            <div class="zone-head">
+              <h3>メインデッキ <span id="sb-main-count" class="count"></span></h3>
+              <span class="hint">クリックでサイドへ</span>
+            </div>
+            <div id="sb-main" class="sb-list"></div>
+          </section>
+
+          <section class="zone game-only">
             <div class="zone-head">
               <h3>手札 <span id="hand-count" class="count"></span></h3>
               <span id="hand-hint" class="hint">クリックで場に出す</span>
@@ -113,7 +142,7 @@
               </button>
             </div>
           </section>
-          <div id="mulligan-bar" class="mulligan-bar" hidden>
+          <div id="mulligan-bar" class="mulligan-bar game-only" hidden>
             <p class="mulligan-text">
               <span id="mulligan-text"></span>
               <button id="keep-btn" class="primary" type="button">キープ</button>
@@ -121,14 +150,14 @@
             </p>
             <button id="mulligan-btn" type="button">マリガン</button>
           </div>
-          <section class="zone">
+          <section class="zone game-only">
             <div class="zone-head">
               <h3>場 <span id="battlefield-count" class="count"></span></h3>
               <span class="hint">カードをクリックでタップ／アンタップ、ドラッグで並べ替え</span>
             </div>
             <div id="battlefield" class="card-row battlefield"></div>
           </section>
-          <div class="pile-row">
+          <div class="pile-row game-only">
             <section class="zone pile">
               <div class="zone-head">
                 <h3>墓地 <span id="graveyard-count" class="count"></span></h3>
@@ -146,7 +175,7 @@
           </div>
         </div>
 
-        <section class="zone zone-library">
+        <section class="zone zone-library game-only">
           <div class="zone-head">
             <h3>ライブラリー <span id="library-count" class="count"></span></h3>
           </div>
@@ -154,6 +183,20 @@
           <ol id="library" class="library-list"></ol>
         </section>
       </div>
+
+      <!-- サイドボード（画面の一番下。ゲーム中はたためる） -->
+      <section id="sideboard-zone" class="zone sideboard-zone">
+        <div class="zone-head">
+          <h3>サイドボード <span id="side-count" class="count"></span></h3>
+          <span id="deck-counts" class="deck-counts"></span>
+          <span id="side-hint" class="hint"></span>
+          <button id="side-toggle" class="side-toggle game-only" type="button" aria-expanded="true" aria-controls="side-body">たたむ ▲</button>
+        </div>
+        <div id="side-body" class="side-body">
+          <div id="side-diff" class="sb-diff game-only"></div>
+          <div id="side-list" class="sb-list"></div>
+        </div>
+      </section>
       <div id="game-toast" class="toast" role="status" aria-live="polite"></div>
       <div id="card-preview" class="card-preview" aria-hidden="true"><img alt=""></div>
     </section>
@@ -163,6 +206,7 @@
   <script src="js/presets.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/sideboard.js"></script>
   <script src="js/cards.js"></script>
   <script src="js/scryfall.js"></script>
   <script src="js/app.js"></script>

@@ -28,7 +28,25 @@
     clearCacheBtn: $('clear-cache-btn'),
     startBtn: $('start-btn'),
     backBtn: $('back-btn'),
-    restartBtn: $('restart-btn'),
+    gameNumber: $('game-number'),
+    nextGameBtn: $('next-game-btn'),
+    nextGameMenu: $('next-game-menu'),
+    nextKeepBtn: $('next-keep-btn'),
+    nextResetBtn: $('next-reset-btn'),
+    sbStartBtn: $('sb-start-btn'),
+    sbMainTotal: $('sb-main-total'),
+    sbSideTotal: $('sb-side-total'),
+    sbProblems: $('sb-problems'),
+    sbDiff: $('sb-diff'),
+    sbMain: $('sb-main'),
+    sbMainCount: $('sb-main-count'),
+    sideCount: $('side-count'),
+    deckCounts: $('deck-counts'),
+    sideHint: $('side-hint'),
+    sideToggle: $('side-toggle'),
+    sideBody: $('side-body'),
+    sideDiff: $('side-diff'),
+    sideList: $('side-list'),
     gameDeckName: $('game-deck-name'),
     hand: $('hand'),
     handCount: $('hand-count'),
@@ -338,6 +356,7 @@
     }).finally(() => {
       renderDeckDetail();
       if (game) renderGame();
+      if (match) (sideboarding ? renderSideboarding() : renderSideboardZone());
     });
   }
 
@@ -618,6 +637,7 @@
 
   function renderGame() {
     el.gameDeckName.textContent = game.deckName;
+    el.gameNumber.textContent = match ? `第${match.gameNumber}ゲーム` : '';
     el.turnCount.textContent = game.turn;
     renderMulliganBar();
 
@@ -926,26 +946,194 @@
 
   // ---------- 開始・終了 ----------
 
-  function startGame() {
-    const deck = selectedDeck();
-    if (!deck) return;
-    imageMode = el.imageMode.value;
-    game = createGame(deck);
+  // ---------- サイドボーディング ----------
+
+  /** その対戦の状態：元のデッキ・今の構成（メイン／サイド）・何戦目か */
+  let match = null;
+  /** サイドボーディング中（ゲーム開始前）か */
+  let sideboarding = false;
+
+  function countDelta(list, original, name) {
+    const k = MTG.nameKey(name);
+    const n = (l) => l.filter((e) => MTG.nameKey(e.name) === k).reduce((s, e) => s + e.count, 0);
+    return n(list) - n(original);
+  }
+
+  /** サイドボーディングの一覧の1行（クリックで反対側へ1枚） */
+  function sbLine(item, zone) {
+    const { entry, info } = item;
+    const ja = info && info.jaName;
+    const original = zone === 'main' ? match.deck.main : (match.deck.side || []);
+    const delta = countDelta(zone === 'main' ? match.config.main : match.config.side, original, entry.name);
+    const to = zone === 'main' ? 'side' : 'main';
+    const btn = h('button', {
+      type: 'button',
+      className: 'sb-card' + (sideboarding ? '' : ' locked'),
+      title: info ? cardTitle(entry, info) : entry.name,
+    },
+      h('span', { className: 'qty' }, entry.count),
+      h('span', { className: 'name' }, displayName(entry, info)),
+      ja && h('span', { className: 'en' }, englishName(entry, info)),
+      delta !== 0 && h('span', { className: 'delta ' + (delta > 0 ? 'plus' : 'minus') }, delta > 0 ? `+${delta}` : `−${-delta}`));
+    btn.dataset.name = entry.name;
+    btn.dataset.to = to;
+    const url = imageUrl(info);
+    if (url) btn.dataset.preview = url;
+    return btn;
+  }
+
+  function sbList(container, list, zone) {
+    if (list.length === 0) {
+      container.replaceChildren(h('p', { className: 'placeholder' }, zone === 'main' ? '（メインにカードがありません）' : '（サイドボードはありません）'));
+      return;
+    }
+    const sorted = sortEntries(list, sortMode, (n) => cardService.get(n));
+    const groups = sortMode === 'type' ? groupByCategory(sorted) : [{ label: null, items: sorted }];
+    container.replaceChildren(...groups.map((g) => h('div', { className: 'sb-group' },
+      g.label && h('h5', null, g.label, ' ', h('span', { className: 'count' }, `(${g.count})`)),
+      h('div', { className: 'sb-items' }, g.items.map((it) => sbLine(it, zone))))));
+  }
+
+  function diffView(container) {
+    const d = MTG.configDiff(match.deck, match.config);
+    if (d.in.length === 0 && d.out.length === 0) {
+      container.replaceChildren(h('p', { className: 'sb-nodiff' }, '元のリストのままです（入れ替えなし）'));
+      return;
+    }
+    const names = (list) => list.map((e) => `${displayName(e, cardService.get(e.name))} ×${e.count}`).join('、');
+    const total = (list) => list.reduce((s, e) => s + e.count, 0);
+    container.replaceChildren(...[
+      d.in.length && h('p', { className: 'sb-in' }, h('strong', null, `IN（${total(d.in)}枚）`), ' ', names(d.in)),
+      d.out.length && h('p', { className: 'sb-out' }, h('strong', null, `OUT（${total(d.out)}枚）`), ' ', names(d.out)),
+    ].filter(Boolean));
+  }
+
+  /** 画面の一番下のサイドボード（いつも表示。メイン・サイドの枚数もここに出す） */
+  function renderSideboardZone() {
+    if (!match) return;
+    const counts = MTG.configCounts(match.config);
+    el.sideCount.textContent = `(${counts.side})`;
+    el.deckCounts.textContent = `メイン ${counts.main} 枚 ／ サイド ${counts.side} 枚`;
+    el.sideHint.textContent = sideboarding ? 'クリックでメインへ' : 'ゲーム中は入れ替えできません';
+    sbList(el.sideList, match.config.side, 'side');
+    if (!sideboarding) diffView(el.sideDiff);
+
+    const collapsed = !sideboarding && sideCollapsed;
+    el.sideBody.hidden = collapsed;
+    el.sideToggle.textContent = collapsed ? 'ひらく ▼' : 'たたむ ▲';
+    el.sideToggle.setAttribute('aria-expanded', String(!collapsed));
+  }
+
+  function renderSideboarding() {
+    if (!match) return;
+    const counts = MTG.configCounts(match.config);
+    const problems = MTG.validateConfig(match.config);
+    el.gameDeckName.textContent = match.deck.name;
+    el.gameNumber.textContent = `第${match.gameNumber}ゲーム`;
+    el.sbMainTotal.textContent = counts.main;
+    el.sbSideTotal.textContent = counts.side;
+    el.sbMainTotal.classList.toggle('bad', counts.main < MTG.MIN_MAIN);
+    el.sbSideTotal.classList.toggle('bad', counts.side > MTG.MAX_SIDE);
+    el.sbMainCount.textContent = `(${counts.main})`;
+    el.sbProblems.replaceChildren(...problems.map((p) => h('li', null, p)));
+    el.sbStartBtn.disabled = problems.length > 0;
+    el.sbStartBtn.title = problems.length ? problems.join('\n') : '';
+    diffView(el.sbDiff);
+    sbList(el.sbMain, match.config.main, 'main');
+    renderSideboardZone();
+  }
+
+  function onSideboardClick(e) {
+    const btn = e.target.closest('.sb-card');
+    if (!btn || !match) return;
+    if (!sideboarding) {
+      showToast('ゲーム中は入れ替えできません（「次のゲーム」でサイドボーディングできます）');
+      return;
+    }
+    if (MTG.moveOne(match.config, btn.dataset.name, btn.dataset.to)) {
+      hidePreview();
+      renderSideboarding();
+    }
+  }
+
+  /** サイドボーディング画面に入る（ゲーム開始前） */
+  function enterSideboarding() {
+    game = null;
     history = [];
-    releaseDrawAnchor();
-    highlight = null;
+    sideboarding = true;
     hidePreview();
+    closeNextGameMenu();
     el.gameToast.classList.remove('show');
-    el.library.scrollTop = 0;
-    renderGame();
+    el.gameView.classList.add('sideboarding');
+    renderSideboarding();
     el.deckView.hidden = true;
     el.gameView.hidden = false;
     window.scrollTo(0, 0);
   }
 
+  /** デッキ画面の「開始」：第1ゲームのサイドボーディングへ */
+  function startMatch() {
+    const deck = selectedDeck();
+    if (!deck) return;
+    imageMode = el.imageMode.value;
+    match = { deck, config: MTG.createConfig(deck), gameNumber: 1 };
+    enterSideboarding();
+  }
+
+  /** 「ゲーム開始」：今のメインをシャッフルして7枚引く。ここから先は入れ替えできない */
+  function startGame() {
+    if (!match || MTG.validateConfig(match.config).length) return;
+    game = createGame({ name: match.deck.name, main: match.config.main });
+    sideboarding = false;
+    history = []; // 「元に戻す」でサイドボーディングに戻れないように
+    releaseDrawAnchor();
+    highlight = null;
+    hidePreview();
+    el.gameView.classList.remove('sideboarding');
+    el.library.scrollTop = 0;
+    renderGame();
+    renderSideboardZone();
+    window.scrollTo(0, 0);
+  }
+
+  /** 「次のゲーム」：サイド後の構成を引き継ぐ（keep）か、元のリストに戻す */
+  function nextGame(keepConfig) {
+    if (!match) return;
+    if (!keepConfig) match.config = MTG.createConfig(match.deck);
+    match.gameNumber += 1;
+    enterSideboarding();
+  }
+
+  function closeNextGameMenu() {
+    el.nextGameMenu.hidden = true;
+    el.nextGameBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleNextGameMenu() {
+    const open = el.nextGameMenu.hidden;
+    el.nextGameMenu.hidden = !open;
+    el.nextGameBtn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      const changed = !MTG.isOriginal(match.deck, match.config);
+      el.nextKeepBtn.textContent = changed ? 'サイド後の構成を引き継ぐ' : 'サイド後の構成を引き継ぐ（今は元のリストのまま）';
+    }
+  }
+
+  let sideCollapsed = !!Prefs.get('sideCollapsed', false);
+
+  function toggleSide() {
+    sideCollapsed = !sideCollapsed;
+    Prefs.set('sideCollapsed', sideCollapsed);
+    renderSideboardZone();
+  }
+
   function backToDecks() {
     game = null;
+    match = null;
+    sideboarding = false;
     history = [];
+    closeNextGameMenu();
+    el.gameView.classList.remove('sideboarding');
     hidePreview();
     el.gameView.hidden = true;
     el.deckView.hidden = false;
@@ -991,8 +1179,17 @@
   }));
   el.clearCacheBtn.addEventListener('click', onClearCache);
   el.diagnoseBtn.addEventListener('click', runDiagnose);
-  el.startBtn.addEventListener('click', startGame);
-  el.restartBtn.addEventListener('click', startGame);
+  el.startBtn.addEventListener('click', startMatch);
+  el.sbStartBtn.addEventListener('click', startGame);
+  el.sbMain.addEventListener('click', onSideboardClick);
+  el.sideList.addEventListener('click', onSideboardClick);
+  el.sideToggle.addEventListener('click', toggleSide);
+  el.nextGameBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleNextGameMenu(); });
+  el.nextKeepBtn.addEventListener('click', () => nextGame(true));
+  el.nextResetBtn.addEventListener('click', () => nextGame(false));
+  document.addEventListener('click', (e) => {
+    if (!el.nextGameMenu.hidden && !e.target.closest('.next-game')) closeNextGameMenu();
+  });
   el.backBtn.addEventListener('click', backToDecks);
   el.hand.addEventListener('click', onHandClick);
   el.library.addEventListener('click', onLibraryClick);
