@@ -281,3 +281,27 @@ test('moveTo の不正な移動は何もしない', () => {
   assert.equal(moveTo(g, g.hand[0].iid, 'top'), null); // キープ前は動かせない
   assert.equal(totalCards(g), 60);
 });
+
+const { reorderBattlefield } = require('../js/game.js');
+
+test('場のカードの並べ替え', () => {
+  const g = createGame(deck);
+  const [a, b, c, d] = g.hand;
+  [a, b, c, d].forEach((x) => playFromHand(g, x.iid));
+  toggleTap(g, b.iid);
+  const order = () => g.battlefield.map((x) => x.iid);
+
+  assert.equal(reorderBattlefield(g, d.iid, a.iid), d); // d を a の前（一番左）へ
+  assert.deepEqual(order(), [d.iid, a.iid, b.iid, c.iid]);
+  assert.equal(reorderBattlefield(g, d.iid, null), d); // 一番右へ
+  assert.deepEqual(order(), [a.iid, b.iid, c.iid, d.iid]);
+  assert.equal(reorderBattlefield(g, a.iid, c.iid), a); // 右へ動かす：c の直前
+  assert.deepEqual(order(), [b.iid, a.iid, c.iid, d.iid]);
+  assert.equal(b.tapped, true); // タップ状態はそのまま
+
+  assert.equal(reorderBattlefield(g, a.iid, c.iid), null); // すでにその位置
+  assert.equal(reorderBattlefield(g, a.iid, a.iid), null); // 自分の前
+  assert.equal(reorderBattlefield(g, 99999, a.iid), null); // 場にないカード
+  assert.equal(reorderBattlefield(g, a.iid, 99999), null); // 落とし先が場にない
+  assert.equal(totalCards(g), 60);
+});

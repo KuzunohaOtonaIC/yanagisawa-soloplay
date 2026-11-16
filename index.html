@@ -100,15 +100,6 @@
 
       <div class="board">
         <div class="board-main">
-          <div id="mulligan-bar" class="mulligan-bar" hidden>
-            <p id="mulligan-text" class="mulligan-text"></p>
-            <div class="row">
-              <button id="mulligan-btn" type="button">マリガン</button>
-              <button id="keep-btn" class="primary" type="button">キープ</button>
-              <button id="bottom-btn" class="primary" type="button">決定</button>
-            </div>
-          </div>
-
           <section class="zone">
             <div class="zone-head">
               <h3>手札 <span id="hand-count" class="count"></span></h3>
@@ -122,10 +113,18 @@
               </button>
             </div>
           </section>
+          <div id="mulligan-bar" class="mulligan-bar" hidden>
+            <p class="mulligan-text">
+              <span id="mulligan-text"></span>
+              <button id="keep-btn" class="primary" type="button">キープ</button>
+              <button id="bottom-btn" class="primary" type="button">決定</button>
+            </p>
+            <button id="mulligan-btn" type="button">マリガン</button>
+          </div>
           <section class="zone">
             <div class="zone-head">
               <h3>場 <span id="battlefield-count" class="count"></span></h3>
-              <span class="hint">カードをクリックでタップ／アンタップ</span>
+              <span class="hint">カードをクリックでタップ／アンタップ、ドラッグで並べ替え</span>
             </div>
             <div id="battlefield" class="card-row battlefield"></div>
           </section>

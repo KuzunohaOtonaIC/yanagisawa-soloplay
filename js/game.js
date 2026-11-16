@@ -223,6 +223,23 @@
     return card;
   }
 
+  /**
+   * 場のカードの並べ替え：iid のカードを beforeIid のカードの直前へ（beforeIid が null なら一番右へ）
+   * 並びが変わらなければ null
+   */
+  function reorderBattlefield(game, iid, beforeIid) {
+    const list = game.battlefield;
+    const from = list.findIndex((c) => c.iid === iid);
+    if (from < 0 || iid === beforeIid) return null;
+    if (beforeIid != null && !list.some((c) => c.iid === beforeIid)) return null;
+    const before = list.map((c) => c.iid).join(',');
+    const [card] = list.splice(from, 1);
+    const to = beforeIid == null ? list.length : list.findIndex((c) => c.iid === beforeIid);
+    list.splice(to, 0, card);
+    if (list.map((c) => c.iid).join(',') === before) return null;
+    return card;
+  }
+
   /** 場のカードを手札・墓地・追放へ移す（タップ状態は解除） */
   function moveFromBattlefield(game, iid, zone) {
     if (!['hand', 'graveyard', 'exile'].includes(zone) || findZone(game, iid) !== 'battlefield') return null;
@@ -232,7 +249,7 @@
   const api = {
     HAND_SIZE, createGame, cloneGame, totalCards, shuffle, expandDeck, randomInt,
     bottomCount, canMulligan, mulligan, keep, toggleBottom, confirmBottom,
-    playFromHand, draw, tutor, nextTurn, toggleTap, moveFromBattlefield, moveTo, findZone,
+    playFromHand, draw, tutor, nextTurn, toggleTap, moveFromBattlefield, moveTo, findZone, reorderBattlefield,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

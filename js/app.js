@@ -431,6 +431,12 @@
   let history = [];
   /** 直前に動いたカード（目立たせる） */
   let highlight = null;
+  /**
+   * ドローボタンの位置：続けて引いている間は動かさない。
+   * 値は「ボタンより左にある手札の枚数」。null なら手札の一番右。
+   * 手札のカードがどこかへ動いたら null に戻す（＝ボタンが手札の一番右へ移る）
+   */
+  let drawAnchor = null;
   let toastTimer = null;
   /** カード画像: 'none' | 'ja' | 'en'（開始時に決める） */
   let imageMode = 'none';
@@ -531,13 +537,15 @@
     fillCard(tile, card, info);
     if (card.iid === highlight) tile.classList.add('is-new');
 
-    return h('div', { className: 'slot' + (card.tapped ? ' tapped' : '') },
+    const slot = h('div', { className: 'slot' + (card.tapped ? ' tapped' : ''), draggable: true },
       h('div', { className: 'slot-card' }, tile),
       h('div', { className: 'slot-actions' },
         moveButton(card, 'graveyard', '墓地', '墓地へ置く'),
         moveButton(card, 'hand', '手札', '手札に戻す'),
         moveButton(card, 'exile', '追放', '追放する')),
       h('div', { className: 'slot-actions' }, libraryButtons(card)));
+    slot.dataset.iid = card.iid;
+    return slot;
   }
 
   /** 墓地・追放のカード（新しいものが上）。ボタンで手札・場・ライブラリーへ */
@@ -614,9 +622,15 @@
     renderMulliganBar();
 
     // ドローボタンは手札の一番右のカードの右に置く
-    el.hand.replaceChildren(...game.hand.map(handTile), el.drawBtn);
-    el.hand.classList.toggle('compact', game.hand.length > COMPACT_HAND);
-    el.hand.classList.toggle('mini', game.hand.length > MINI_HAND);
+    // ドローボタンは手札の一番右。ただし続けて引いている間はその場にとどめ、引いたカードはボタンの右に並べる
+    if (drawAnchor != null && drawAnchor >= game.hand.length) drawAnchor = null;
+    const tiles = game.hand.map(handTile);
+    if (drawAnchor == null) el.hand.replaceChildren(...tiles, el.drawBtn);
+    else el.hand.replaceChildren(...tiles.slice(0, drawAnchor), el.drawBtn, ...tiles.slice(drawAnchor));
+    // カードの大きさも、続けて引いている間は変えない（ボタンの位置がずれないように）
+    const sizeCount = drawAnchor == null ? game.hand.length : drawAnchor;
+    el.hand.classList.toggle('compact', sizeCount > COMPACT_HAND);
+    el.hand.classList.toggle('mini', sizeCount > MINI_HAND);
     el.drawLeft.textContent = game.library.length ? `残り ${game.library.length} 枚` : 'ライブラリーなし';
     el.handCount.textContent = `(${game.hand.length})`;
     el.handHint.textContent = game.phase === 'bottom'
@@ -644,7 +658,13 @@
 
   /** 手札の最後（加わったカードとドローボタン）が見えるよう、手札の枠を一番下までスクロール */
   function revealHandEnd() {
+    if (drawAnchor != null) return; // 続けて引いている間はスクロールしない（ボタンの位置を保つ）
     el.hand.scrollTop = el.hand.scrollHeight;
+  }
+
+  /** 手札のカードがどこかへ動いた：ドローボタンを手札の一番右へ戻す */
+  function releaseDrawAnchor() {
+    drawAnchor = null;
   }
 
   function showToast(text) {
@@ -686,11 +706,12 @@
   function onDraw() {
     if (!game) return;
     if (!canAct()) return notReadyToast();
+    const handBefore = game.hand.length;
     const card = act(() => MTG.draw(game));
     if (!card) return showToast('ライブラリーにカードがありません');
+    if (drawAnchor == null) drawAnchor = handBefore;
     highlight = card.iid;
     renderGame();
-    revealHandEnd();
     showToast(`${nameOf(card)} を引きました`);
   }
 
@@ -698,17 +719,19 @@
     if (!game) return;
     if (!canAct()) return notReadyToast();
     const before = JSON.stringify(game);
+    const handBefore = game.hand.length;
     const card = MTG.nextTurn(game);
     history.push(before);
+    if (card && drawAnchor == null) drawAnchor = handBefore;
     highlight = card ? card.iid : null;
     renderGame();
-    revealHandEnd();
     showToast(card ? `ターン${game.turn}：アンタップして ${nameOf(card)} を引きました`
       : `ターン${game.turn}：ライブラリーにカードがありません`);
   }
 
   function onMulligan() {
     if (!game || !act(() => MTG.mulligan(game))) return;
+    releaseDrawAnchor();
     highlight = null;
     renderGame();
     showToast(`マリガンしました（${game.mulligans}回目）`);
@@ -723,6 +746,7 @@
     if (!game) return;
     const n = MTG.bottomCount(game);
     if (!act(() => MTG.confirmBottom(game))) return;
+    releaseDrawAnchor();
     renderGame();
     showToast(`${n}枚をライブラリーの下に置きました。プレイを始めてください`);
   }
@@ -744,8 +768,68 @@
     if (!canAct()) return notReadyToast();
     const card = act(() => MTG.playFromHand(game, iid));
     if (!card) return;
+    releaseDrawAnchor();
     highlight = card.iid;
     renderGame();
+  }
+
+  // ---------- 場のカードのドラッグで並べ替え ----------
+
+  let dragIid = null;
+
+  function clearDropMarks() {
+    el.battlefield.querySelectorAll('.drop-before, .drop-after').forEach((n) => n.classList.remove('drop-before', 'drop-after'));
+  }
+
+  /** ドラッグ中の位置から、どのカードの前に入れるか（null なら一番右）と、目印を付ける場所を求める */
+  function dropTarget(e) {
+    const slots = [...el.battlefield.querySelectorAll('.slot')].filter((n) => Number(n.dataset.iid) !== dragIid);
+    const over = e.target.closest('.slot');
+    if (over && Number(over.dataset.iid) !== dragIid) {
+      const r = over.getBoundingClientRect();
+      const after = e.clientX > r.left + r.width / 2;
+      const i = slots.indexOf(over);
+      const next = after ? slots[i + 1] : over;
+      return { beforeIid: next ? Number(next.dataset.iid) : null, mark: over, side: after ? 'after' : 'before' };
+    }
+    if (over) return null; // 自分の上
+    const last = slots[slots.length - 1];
+    return last ? { beforeIid: null, mark: last, side: 'after' } : null;
+  }
+
+  function onDragStart(e) {
+    const slot = e.target.closest && e.target.closest('.slot');
+    if (!slot || !game) return;
+    dragIid = Number(slot.dataset.iid);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(dragIid));
+    hidePreview();
+    requestAnimationFrame(() => slot.classList.add('dragging'));
+  }
+
+  function onDragOver(e) {
+    if (dragIid == null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    clearDropMarks();
+    const t = dropTarget(e);
+    if (t) t.mark.classList.add(t.side === 'after' ? 'drop-after' : 'drop-before');
+  }
+
+  function onDrop(e) {
+    if (dragIid == null) return;
+    e.preventDefault();
+    const t = dropTarget(e);
+    const iid = dragIid;
+    onDragEnd();
+    if (!t) return;
+    if (act(() => MTG.reorderBattlefield(game, iid, t.beforeIid))) renderGame();
+  }
+
+  function onDragEnd() {
+    dragIid = null;
+    clearDropMarks();
+    el.battlefield.querySelectorAll('.dragging').forEach((n) => n.classList.remove('dragging'));
   }
 
   function onBattlefieldClick(e) {
@@ -769,8 +853,10 @@
     if (!btn || !game || btn.disabled) return;
     if (!canAct()) return notReadyToast();
     const to = btn.dataset.move;
+    const from = MTG.findZone(game, Number(btn.dataset.iid));
     const card = act(() => MTG.moveTo(game, Number(btn.dataset.iid), to));
     if (!card) return;
+    if (from === 'hand') releaseDrawAnchor();
     highlight = card.iid;
     hidePreview();
     renderGame();
@@ -846,6 +932,7 @@
     imageMode = el.imageMode.value;
     game = createGame(deck);
     history = [];
+    releaseDrawAnchor();
     highlight = null;
     hidePreview();
     el.gameToast.classList.remove('show');
@@ -916,6 +1003,13 @@
   el.keepBtn.addEventListener('click', onKeep);
   el.bottomBtn.addEventListener('click', onConfirmBottom);
   el.battlefield.addEventListener('click', onBattlefieldClick);
+  el.battlefield.addEventListener('dragstart', onDragStart);
+  el.battlefield.addEventListener('dragover', onDragOver);
+  el.battlefield.addEventListener('dragleave', (e) => {
+    if (!el.battlefield.contains(e.relatedTarget)) clearDropMarks();
+  });
+  el.battlefield.addEventListener('drop', onDrop);
+  el.battlefield.addEventListener('dragend', onDragEnd);
   el.gameView.addEventListener('click', onMoveClick);
   el.gameView.addEventListener('mouseover', onPreviewOver);
   el.gameView.addEventListener('mouseleave', hidePreview);
