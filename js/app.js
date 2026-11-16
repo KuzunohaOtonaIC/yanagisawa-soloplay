@@ -32,6 +32,7 @@
     gameNumber: $('game-number'),
     nextGameBtn: $('next-game-btn'),
     nextGameMenu: $('next-game-menu'),
+    nextStartBtn: $('next-start-btn'),
     nextKeepBtn: $('next-keep-btn'),
     nextResetBtn: $('next-reset-btn'),
     sbStartBtn: $('sb-start-btn'),
@@ -1270,10 +1271,22 @@
   }
 
   /** 「次のゲーム」：サイド後の構成を引き継ぐ（keep）か、元のリストに戻す */
-  function nextGame(keepConfig) {
+  /**
+   * 「次のゲーム」
+   *   'start'  … 現在の構成を引き継いで、サイドボーディングを通さずにすぐ開始
+   *   'adjust' … 現在の構成のまま、サイドボーディング画面へ
+   *   'reset'  … 元のリストに戻して、サイドボーディング画面へ
+   */
+  function nextGame(mode) {
     if (!match) return;
-    if (!keepConfig) match.config = MTG.createConfig(match.deck);
+    if (mode === 'reset') match.config = MTG.createConfig(match.deck);
     match.gameNumber += 1;
+    closeNextGameMenu();
+    if (mode === 'start' && MTG.validateConfig(match.config).length === 0) {
+      startGame();
+      showToast(`第${match.gameNumber}ゲームを開始しました`);
+      return;
+    }
     enterSideboarding();
   }
 
@@ -1286,10 +1299,6 @@
     const open = el.nextGameMenu.hidden;
     el.nextGameMenu.hidden = !open;
     el.nextGameBtn.setAttribute('aria-expanded', String(open));
-    if (open) {
-      const changed = !MTG.isOriginal(match.deck, match.config);
-      el.nextKeepBtn.textContent = changed ? 'サイド後の構成を引き継ぐ' : 'サイド後の構成を引き継ぐ（今は元のリストのまま）';
-    }
   }
 
   let sideCollapsed = !!Prefs.get('sideCollapsed', false);
@@ -1366,8 +1375,9 @@
   el.sbPlanExportBtn.addEventListener('click', onPlanExport);
   el.sbPlanImport.addEventListener('change', onPlanImport);
   el.nextGameBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleNextGameMenu(); });
-  el.nextKeepBtn.addEventListener('click', () => nextGame(true));
-  el.nextResetBtn.addEventListener('click', () => nextGame(false));
+  el.nextStartBtn.addEventListener('click', () => nextGame('start'));
+  el.nextKeepBtn.addEventListener('click', () => nextGame('adjust'));
+  el.nextResetBtn.addEventListener('click', () => nextGame('reset'));
   document.addEventListener('click', (e) => {
     if (!el.nextGameMenu.hidden && !e.target.closest('.next-game')) closeNextGameMenu();
   });

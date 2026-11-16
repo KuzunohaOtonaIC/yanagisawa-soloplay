@@ -649,7 +649,7 @@ html, body, #hand, #hand * { overflow-anchor: none; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 250px;
+  min-width: 270px;
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -658,7 +658,7 @@ html, body, #hand, #hand * { overflow-anchor: none; }
 }
 .next-game-menu[hidden] { display: none; }
 .next-game-title { margin: 0 0 2px; font-size: .8rem; color: var(--muted); }
-.next-game-menu button { text-align: left; }
+.next-game-menu button { text-align: left; white-space: nowrap; }
 
 /* サイドプラン */
 .sb-plan { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(0, 0, 0, .15); }
