@@ -8,6 +8,7 @@
   const DECKS_KEY = 'mtg-goldfish:decks:v1';
   const SELECTED_KEY = 'mtg-goldfish:selected-deck:v1';
   const PREFS_PREFIX = 'mtg-goldfish:pref:';
+  const SIDEPLANS_KEY = 'mtg-goldfish:sideplans:v1';
 
   function read(key, fallback) {
     try {
@@ -73,6 +74,55 @@
     },
   };
 
+  /**
+   * サイドプランの保存（デッキ名にひもづける）
+   * plan = { id, deck, name, in: [{count, name}], out: [{count, name}], createdAt, updatedAt }
+   */
+  const SidePlanStore = {
+    all() {
+      const plans = read(SIDEPLANS_KEY, []);
+      return Array.isArray(plans) ? plans : [];
+    },
+
+    list(deckName) {
+      return this.all().filter((p) => p.deck === deckName).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    },
+
+    find(deckName, name) {
+      return this.all().find((p) => p.deck === deckName && p.name === name.trim()) || null;
+    },
+
+    /** 同じデッキ・同じ名前があれば上書き */
+    save(deckName, plan) {
+      const plans = this.all();
+      const now = new Date().toISOString();
+      const name = plan.name.trim();
+      let saved = plans.find((p) => p.deck === deckName && p.name === name);
+      if (saved) {
+        Object.assign(saved, { in: plan.in, out: plan.out, updatedAt: now });
+      } else {
+        saved = { id: newId(), deck: deckName, name, in: plan.in, out: plan.out, createdAt: now, updatedAt: now };
+        plans.push(saved);
+      }
+      write(SIDEPLANS_KEY, plans);
+      return saved;
+    },
+
+    remove(id) {
+      write(SIDEPLANS_KEY, this.all().filter((p) => p.id !== id));
+    },
+
+    /** JSON から読み込んだプランをまとめて保存。上書きした件数も返す */
+    importMany(list) {
+      let replaced = 0;
+      list.forEach((p) => {
+        if (this.find(p.deck, p.name)) replaced++;
+        this.save(p.deck, p);
+      });
+      return { added: list.length - replaced, replaced };
+    },
+  };
+
   /** 画面の設定（並び順など） */
   const Prefs = {
     get(name, fallback) {
@@ -83,5 +133,5 @@
     },
   };
 
-  root.MTG = Object.assign(root.MTG || {}, { DeckStore, Prefs });
+  root.MTG = Object.assign(root.MTG || {}, { DeckStore, Prefs, SidePlanStore });
 })(window);

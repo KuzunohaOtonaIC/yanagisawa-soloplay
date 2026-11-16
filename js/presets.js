@@ -50,6 +50,9 @@ SIDEBOARD:
 1 Sanctum Prelate
 1 The Stone Brain
 `,
+      // 組み込みサイドプラン（誰が開いても最初から入っている）。例：
+      // { name: 'vsホガーク', in: [{ count: 2, name: 'Rest in Peace' }], out: [{ count: 2, name: 'Defense Grid' }] }
+      sidePlans: [],
     },
     {
       id: 'preset:hogaak',
@@ -87,6 +90,9 @@ Sideboard
 1 Engineered Explosives
 1 Force of Negation
 `,
+      // 組み込みサイドプラン（誰が開いても最初から入っている）。例：
+      // { name: 'vsホガーク', in: [{ count: 2, name: 'Rest in Peace' }], out: [{ count: 2, name: 'Defense Grid' }] }
+      sidePlans: [],
     },
     {
       id: 'preset:lo',
@@ -131,6 +137,9 @@ Sideboard
 2 Ensnaring Bridge
 2 Baleful Mastery
 `,
+      // 組み込みサイドプラン（誰が開いても最初から入っている）。例：
+      // { name: 'vsホガーク', in: [{ count: 2, name: 'Rest in Peace' }], out: [{ count: 2, name: 'Defense Grid' }] }
+      sidePlans: [],
     },
   ];
 
@@ -141,7 +150,10 @@ Sideboard
     if (!cache) {
       cache = PRESETS.map((p) => {
         const parsed = parseDeckList(p.text);
-        return { id: p.id, name: p.name, main: parsed.main, side: parsed.side, preset: true, errors: parsed.errors };
+        return {
+          id: p.id, name: p.name, main: parsed.main, side: parsed.side, preset: true, errors: parsed.errors,
+          sidePlans: (p.sidePlans || []).map((plan) => ({ ...plan, id: `builtin:${p.id}:${plan.name}`, builtin: true })),
+        };
       });
     }
     return cache;
@@ -152,6 +164,12 @@ Sideboard
     return presetDecks()[0];
   }
 
+  /** デッキ名に対応する組み込みサイドプラン（削除不可） */
+  function presetSidePlans(deckName) {
+    const deck = presetDecks().find((d) => d.name === deckName);
+    return deck ? deck.sidePlans : [];
+  }
+
   function isPresetId(id) {
     return typeof id === 'string' && id.startsWith('preset:');
   }
@@ -160,7 +178,7 @@ Sideboard
     return presetDecks().find((d) => d.id === id) || null;
   }
 
-  const api = { presetDecks, defaultPreset, isPresetId, getPreset };
+  const api = { presetDecks, defaultPreset, isPresetId, getPreset, presetSidePlans };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;

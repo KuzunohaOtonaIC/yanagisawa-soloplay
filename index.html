@@ -118,6 +118,26 @@
               </div>
               <button id="sb-start-btn" class="primary large" type="button">ゲーム開始<br><small>シャッフルして7枚引く</small></button>
             </div>
+            <div class="sb-plan">
+              <div class="sb-plan-row">
+                <label for="sb-plan-select" class="sb-plan-label">サイドプラン</label>
+                <select id="sb-plan-select"></select>
+                <button id="sb-plan-save-btn" type="button" title="今の入れ替えを、名前を付けてプランとして保存します">保存…</button>
+                <button id="sb-plan-delete-btn" class="danger" type="button">削除</button>
+                <span class="sb-plan-sep" aria-hidden="true"></span>
+                <button id="sb-plan-export-btn" type="button" title="このデッキのサイドプランを JSON ファイルに書き出します">JSON書き出し</button>
+                <label class="file-btn small" title="書き出した JSON ファイルからサイドプランを読み込みます">
+                  <input id="sb-plan-import" type="file" accept=".json,application/json">
+                  JSON読み込み
+                </label>
+              </div>
+              <form id="sb-plan-form" class="sb-plan-form" hidden>
+                <input id="sb-plan-name" type="text" placeholder="プラン名（例: vsホガーク）" maxlength="40" autocomplete="off">
+                <button type="submit" class="primary">この入れ替えを保存</button>
+                <button id="sb-plan-cancel" type="button">キャンセル</button>
+              </form>
+              <p id="sb-plan-msg" class="sb-plan-msg" role="status"></p>
+            </div>
             <ul id="sb-problems" class="sb-problems"></ul>
             <div id="sb-diff" class="sb-diff"></div>
           </section>
@@ -189,6 +209,7 @@
         <div class="zone-head">
           <h3>サイドボード <span id="side-count" class="count"></span></h3>
           <span id="deck-counts" class="deck-counts"></span>
+          <span id="side-plan-name" class="side-plan-name"></span>
           <span id="side-hint" class="hint"></span>
           <button id="side-toggle" class="side-toggle game-only" type="button" aria-expanded="true" aria-controls="side-body">たたむ ▲</button>
         </div>
@@ -207,6 +228,7 @@
   <script src="js/storage.js"></script>
   <script src="js/game.js"></script>
   <script src="js/sideboard.js"></script>
+  <script src="js/sidePlans.js"></script>
   <script src="js/cards.js"></script>
   <script src="js/scryfall.js"></script>
   <script src="js/app.js"></script>

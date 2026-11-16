@@ -47,6 +47,16 @@
     sideBody: $('side-body'),
     sideDiff: $('side-diff'),
     sideList: $('side-list'),
+    sidePlanName: $('side-plan-name'),
+    sbPlanSelect: $('sb-plan-select'),
+    sbPlanSaveBtn: $('sb-plan-save-btn'),
+    sbPlanDeleteBtn: $('sb-plan-delete-btn'),
+    sbPlanExportBtn: $('sb-plan-export-btn'),
+    sbPlanImport: $('sb-plan-import'),
+    sbPlanForm: $('sb-plan-form'),
+    sbPlanName: $('sb-plan-name'),
+    sbPlanCancel: $('sb-plan-cancel'),
+    sbPlanMsg: $('sb-plan-msg'),
     gameDeckName: $('game-deck-name'),
     hand: $('hand'),
     handCount: $('hand-count'),
@@ -1015,6 +1025,8 @@
     el.sideCount.textContent = `(${counts.side})`;
     el.deckCounts.textContent = `メイン ${counts.main} 枚 ／ サイド ${counts.side} 枚`;
     el.sideHint.textContent = sideboarding ? 'クリックでメインへ' : 'ゲーム中は入れ替えできません';
+    const { value, plan } = currentPlan();
+    el.sidePlanName.textContent = plan ? `サイドプラン：${plan.name}` : value === '__custom' ? 'サイドプラン：カスタム' : '';
     sbList(el.sideList, match.config.side, 'side');
     if (!sideboarding) diffView(el.sideDiff);
 
@@ -1039,6 +1051,7 @@
     el.sbStartBtn.disabled = problems.length > 0;
     el.sbStartBtn.title = problems.length ? problems.join('\n') : '';
     diffView(el.sbDiff);
+    renderPlanControls();
     sbList(el.sbMain, match.config.main, 'main');
     renderSideboardZone();
   }
@@ -1052,13 +1065,163 @@
     }
     if (MTG.moveOne(match.config, btn.dataset.name, btn.dataset.to)) {
       hidePreview();
+      setPlanMessage('');
       renderSideboarding();
     }
+  }
+
+
+  // ---------- サイドプラン（マッチアップごとの入れ替え） ----------
+
+  /** このデッキのプラン：組み込みプラン → 保存したプラン */
+  function plansFor(deck) {
+    return [...MTG.presetSidePlans(deck.name), ...MTG.SidePlanStore.list(deck.name)];
+  }
+
+  /** 今の構成に当たるプラン。value は選択欄の値（'' = 元のリスト、'__custom' = 手で入れ替えた） */
+  function currentPlan() {
+    if (MTG.isOriginal(match.deck, match.config)) return { value: '', plan: null };
+    const plan = MTG.matchingPlan(match.deck, match.config, plansFor(match.deck));
+    return plan ? { value: plan.id, plan } : { value: '__custom', plan: null };
+  }
+
+  function setPlanMessage(text, kind = '') {
+    el.sbPlanMsg.textContent = text || '';
+    el.sbPlanMsg.className = 'sb-plan-msg' + (kind ? ' ' + kind : '');
+  }
+
+  function renderPlanControls() {
+    const plans = plansFor(match.deck);
+    const builtin = plans.filter((p) => p.builtin);
+    const saved = plans.filter((p) => !p.builtin);
+    const opt = (p) => h('option', { value: p.id, textContent: p.name });
+    const { value, plan } = currentPlan();
+    el.sbPlanSelect.replaceChildren(...[
+      h('option', { value: '', textContent: '（元のリスト）' }),
+      value === '__custom' && h('option', { value: '__custom', textContent: '（カスタム：手で入れ替え中）' }),
+      builtin.length && h('optgroup', { label: '組み込みプラン' }, builtin.map(opt)),
+      h('optgroup', { label: '保存したプラン' },
+        saved.length ? saved.map(opt) : h('option', { value: '__none', disabled: true, textContent: '（まだありません）' })),
+    ].filter(Boolean));
+    el.sbPlanSelect.value = value;
+
+    const problems = MTG.validateConfig(match.config);
+    el.sbPlanSaveBtn.disabled = problems.length > 0 || value === '';
+    el.sbPlanSaveBtn.title = value === '' ? 'カードを入れ替えてから保存してください'
+      : problems.length ? '枚数のルールを満たしてから保存してください' : '今の入れ替えを、名前を付けてプランとして保存します';
+    el.sbPlanDeleteBtn.disabled = !plan || plan.builtin;
+    el.sbPlanDeleteBtn.title = plan && plan.builtin ? '組み込みプランは削除できません' : '';
+    el.sbPlanExportBtn.disabled = plans.length === 0;
+  }
+
+  function onPlanSelect() {
+    const value = el.sbPlanSelect.value;
+    if (value === '__custom' || value === '__none') return;
+    if (value === '') {
+      match.config = MTG.createConfig(match.deck);
+      setPlanMessage('元のリストに戻しました。');
+    } else {
+      const plan = plansFor(match.deck).find((p) => p.id === value);
+      if (!plan) return;
+      const { config, skipped } = MTG.applyPlan(match.deck, plan);
+      match.config = config;
+      if (skipped.length) {
+        const list = skipped.map((x) => `${displayName(x, cardService.get(x.name))} ×${x.count}（${x.to === 'main' ? 'サイドにない' : 'メインにない'}）`).join('、');
+        setPlanMessage(`「${plan.name}」を反映しました。ただし次のカードはデッキリストに見つからず、動かせませんでした：${list}`, 'warn');
+      } else {
+        setPlanMessage(`「${plan.name}」を反映しました。`);
+      }
+    }
+    closePlanForm();
+    renderSideboarding();
+  }
+
+  function openPlanForm() {
+    const { plan } = currentPlan();
+    el.sbPlanForm.hidden = false;
+    el.sbPlanName.value = plan && !plan.builtin ? plan.name : '';
+    el.sbPlanName.focus();
+  }
+
+  function closePlanForm() {
+    el.sbPlanForm.hidden = true;
+  }
+
+  function onPlanSave(e) {
+    e.preventDefault();
+    const name = el.sbPlanName.value.trim();
+    if (!name) {
+      setPlanMessage('プラン名を入力してください。', 'warn');
+      el.sbPlanName.focus();
+      return;
+    }
+    if (MTG.validateConfig(match.config).length) return;
+    if (MTG.presetSidePlans(match.deck.name).some((p) => p.name === name)) {
+      setPlanMessage(`「${name}」は組み込みプランと同じ名前なので使えません。`, 'warn');
+      return;
+    }
+    if (MTG.SidePlanStore.find(match.deck.name, name) && !confirm(`「${name}」はすでに保存されています。上書きしますか？`)) return;
+    MTG.SidePlanStore.save(match.deck.name, MTG.planFromConfig(match.deck, match.config, name));
+    closePlanForm();
+    setPlanMessage(`「${name}」を保存しました。次からは選ぶだけで、この入れ替えが反映されます。`);
+    renderSideboarding();
+  }
+
+  function onPlanDelete() {
+    const { plan } = currentPlan();
+    if (!plan || plan.builtin || !confirm(`サイドプラン「${plan.name}」を削除しますか？（今の入れ替えはそのままです）`)) return;
+    MTG.SidePlanStore.remove(plan.id);
+    setPlanMessage(`「${plan.name}」を削除しました。`);
+    renderSideboarding();
+  }
+
+  function onPlanExport() {
+    const plans = plansFor(match.deck);
+    if (!plans.length) return;
+    const blob = new Blob([MTG.exportPlansJSON(match.deck.name, plans)], { type: 'application/json' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `サイドプラン_${match.deck.name.replace(/[\\/:*?"<>|]/g, '_')}.json` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setPlanMessage(`${plans.length}件のサイドプランを書き出しました。`);
+  }
+
+  async function onPlanImport() {
+    const file = el.sbPlanImport.files[0];
+    el.sbPlanImport.value = ''; // 同じファイルをもう一度選べるように
+    if (!file) return;
+    let text;
+    try {
+      text = await readTextFile(file);
+    } catch (e) {
+      setPlanMessage('ファイルを読み込めませんでした。', 'warn');
+      return;
+    }
+    const result = MTG.parsePlansJSON(text);
+    if (result.error) {
+      setPlanMessage(`読み込めませんでした：${result.error}`, 'warn');
+      return;
+    }
+    if (!result.plans.length) {
+      setPlanMessage('ファイルにサイドプランが入っていませんでした。', 'warn');
+      return;
+    }
+    const dup = result.plans.filter((p) => MTG.SidePlanStore.find(p.deck, p.name)).length;
+    if (dup && !confirm(`${dup}件は同じ名前のプランがすでにあります。上書きしますか？`)) return;
+    const { added, replaced } = MTG.SidePlanStore.importMany(result.plans);
+    const here = result.plans.filter((p) => p.deck === match.deck.name).length;
+    const other = result.plans.length - here;
+    setPlanMessage(`${added + replaced}件読み込みました（新規${added}件・上書き${replaced}件）。`
+      + (other ? `うち${other}件は別のデッキ用なので、そのデッキを開くと出てきます。` : ''));
+    renderSideboarding();
   }
 
   /** サイドボーディング画面に入る（ゲーム開始前） */
   function enterSideboarding() {
     game = null;
+    setPlanMessage('');
+    closePlanForm();
     history = [];
     sideboarding = true;
     hidePreview();
@@ -1184,6 +1347,13 @@
   el.sbMain.addEventListener('click', onSideboardClick);
   el.sideList.addEventListener('click', onSideboardClick);
   el.sideToggle.addEventListener('click', toggleSide);
+  el.sbPlanSelect.addEventListener('change', onPlanSelect);
+  el.sbPlanSaveBtn.addEventListener('click', openPlanForm);
+  el.sbPlanForm.addEventListener('submit', onPlanSave);
+  el.sbPlanCancel.addEventListener('click', closePlanForm);
+  el.sbPlanDeleteBtn.addEventListener('click', onPlanDelete);
+  el.sbPlanExportBtn.addEventListener('click', onPlanExport);
+  el.sbPlanImport.addEventListener('change', onPlanImport);
   el.nextGameBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleNextGameMenu(); });
   el.nextKeepBtn.addEventListener('click', () => nextGame(true));
   el.nextResetBtn.addEventListener('click', () => nextGame(false));

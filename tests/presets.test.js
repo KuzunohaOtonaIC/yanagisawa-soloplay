@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { presetDecks, defaultPreset, isPresetId, getPreset } = require('../js/presets.js');
+const { presetDecks, defaultPreset, isPresetId, getPreset, presetSidePlans } = require('../js/presets.js');
 const { countCards } = require('../js/parser.js');
 
 test('組み込みデッキはすべて読み取りエラーなし、メイン60枚以上・サイド15枚', () => {
@@ -19,4 +19,10 @@ test('組み込みデッキはすべて読み取りエラーなし、メイン60
   assert.equal(countCards(getPreset('preset:hogaak').main), 60);
   assert.equal(countCards(getPreset('preset:lo').main), 61);
   assert.ok(!isPresetId('d123'));
+});
+
+test('組み込みサイドプランの置き場所（今は空）', () => {
+  presetDecks().forEach((d) => assert.ok(Array.isArray(d.sidePlans)));
+  assert.deepEqual(presetSidePlans('柳澤流呪術唱専'), []);
+  assert.deepEqual(presetSidePlans('存在しないデッキ'), []);
 });

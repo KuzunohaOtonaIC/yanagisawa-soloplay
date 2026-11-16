@@ -657,3 +657,19 @@ html, body, #hand, #hand * { overflow-anchor: none; }
 .next-game-menu[hidden] { display: none; }
 .next-game-title { margin: 0 0 2px; font-size: .8rem; color: var(--muted); }
 .next-game-menu button { text-align: left; }
+
+/* サイドプラン */
+.sb-plan { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(0, 0, 0, .15); }
+.sb-plan-row, .sb-plan-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sb-plan-form { margin-top: 8px; }
+.sb-plan-form[hidden] { display: none; }
+.sb-plan-label { font-weight: 700; font-size: .92rem; }
+#sb-plan-select { min-width: 220px; max-width: 100%; background: var(--panel); }
+#sb-plan-name { min-width: 220px; background: var(--panel); }
+.sb-plan-sep { flex: 1; }
+.file-btn.small { padding: 5px 12px; font-size: .88rem; background: var(--panel); }
+.sb-plan-msg { margin: 6px 0 0; font-size: .85rem; }
+.sb-plan-msg:empty { display: none; }
+.sb-plan-msg.warn { color: var(--danger); font-weight: 600; }
+.side-plan-name { font-size: .85rem; font-weight: 600; color: #f3d27a; }
+.side-plan-name:empty { display: none; }
