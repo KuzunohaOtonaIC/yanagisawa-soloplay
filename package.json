@@ -1,6 +1,6 @@
 {
   "name": "yanagisawa-soloplay",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "private": true,
   "description": "柳澤流ソロプレイツール（MTG 一人回し用 Web アプリ）",
   "scripts": {

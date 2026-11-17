@@ -241,7 +241,9 @@ textarea#deck-text {
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
-.game-deck-name { flex: 1; min-width: 8em; }
+.game-deck-name { min-width: 0; }
+/* 「次のターンへ」はデッキ名のすぐ右。残り（何ゲーム目・ターン・元に戻す・次のゲーム）は右寄せ */
+.game-number { margin-left: auto; }
 
 .board {
   display: grid;
