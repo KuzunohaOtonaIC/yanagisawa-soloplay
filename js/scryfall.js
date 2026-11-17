@@ -3,6 +3,7 @@
  *
  * 1. POST /cards/collection（最大75枚/回）で英語名から type_line・oracle_id を取得
  * 2. GET /cards/search?q=lang:ja (oracleid:… or …) で日本語版の printed_name を取得
+ * 3. （裏で・後から）画像：英語の初版と、初版と同じセットの日本語版。基本土地は最新の画像のまま
  *
  * キャッシュ済みのカードは問い合わせない。見つからなかったカードも1日はキャッシュする。
  * リクエストの間隔は 100ms 以上空ける（Scryfall のレート制限への配慮）。
@@ -23,6 +24,10 @@
   const MAX_RETRIES = 2;
   /** キャッシュの形式。これより古い形式のカードは取得し直す（v2 で画像を追加、v3 で日本語名を全部の版から探すように） */
   const SCHEMA = 3;
+  /** 画像（初版）の取得の形式。これと違うカードは画像だけ取り直す */
+  const IMAGE_VERSION = 1;
+  /** 基本土地は初版を探さず、最新の画像を使う（追加の問い合わせが要らず速い） */
+  const BASIC_LANDS = ['Plains', 'Island', 'Mountain', 'Swamp', 'Forest', 'Wastes'];
 
   /** 分割・両面カードは第1面の名前（"Fire // Ice" → "Fire"）。Scryfall はこの名前で検索できる */
   function frontFace(name) {
@@ -58,6 +63,46 @@
     return (uris && uris.normal) || null;
   }
 
+  function isBasicLand(name) {
+    return BASIC_LANDS.includes(name);
+  }
+
+  /**
+   * 表示する画像（normal の URL）を選ぶ
+   * mode 'ja'：初版と同じセットの日本語版 → 英語の初版 → 今の画像（初版の取得前）
+   * mode 'en'：英語の初版 → 今の画像
+   * 基本土地は最新の画像
+   */
+  function pickImage(info, mode) {
+    if (!info || (mode !== 'ja' && mode !== 'en')) return null;
+    if (isBasicLand(info.name)) return (mode === 'ja' ? info.imageJa || info.imageEn : info.imageEn) || null;
+    if (mode === 'ja') return info.imageFirstJa || info.imageFirstEn || info.imageJa || info.imageEn || null;
+    return info.imageFirstEn || info.imageEn || null;
+  }
+
+  /** カードの表示用の小さい画像（約10KB）。拡大表示は normal のまま */
+  function smallImage(url) {
+    return url ? url.replace('/normal/', '/small/') : url;
+  }
+
+  /** 同じ日に出た版が複数あるとき、通常の版を優先するための順位（小さいほど優先） */
+  function printRank(card) {
+    let rank = 0;
+    if (card.promo) rank += 4;
+    if (card.full_art) rank += 2;
+    if (Array.isArray(card.frame_effects) && card.frame_effects.some((f) => f !== 'legendary')) rank += 1;
+    if (card.border_color === 'borderless') rank += 1;
+    return rank;
+  }
+
+  /** 一番古い版（同じ日なら通常の版）を選ぶ */
+  function oldestPrint(cards) {
+    return cards.slice().sort((a, b) =>
+      String(a.released_at).localeCompare(String(b.released_at)) ||
+      printRank(a) - printRank(b) ||
+      (parseInt(a.collector_number, 10) || 0) - (parseInt(b.collector_number, 10) || 0))[0] || null;
+  }
+
   function toEntry(card, fetchedAt) {
     const typeLine = card.type_line || faces(card).map((f) => f.type_line).filter(Boolean).join(' // ');
     const cmc = typeof card.cmc === 'number' ? card.cmc : (faces(card)[0] && faces(card)[0].cmc) || 0;
@@ -83,20 +128,35 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  /** 日本語版を探す検索文を、長さの上限を超えないように分けて作る */
-  function japaneseSearchQueries(oracleIds, maxLength = MAX_QUERY_LENGTH) {
+  /** 「prefix (条件1 or 条件2 …)」の検索文を、長さの上限を超えないように分けて作る */
+  function orQueries(prefix, clauses, maxLength = MAX_QUERY_LENGTH) {
     const queries = [];
-    let ids = [];
-    const build = (list) => `lang:ja (${list.map((id) => 'oracleid:' + id).join(' or ')})`;
-    oracleIds.forEach((id) => {
-      if (ids.length && build([...ids, id]).length > maxLength) {
-        queries.push({ q: build(ids), count: ids.length });
-        ids = [];
+    let list = [];
+    const build = (l) => `${prefix} (${l.join(' or ')})`;
+    clauses.forEach((c) => {
+      if (list.length && build([...list, c]).length > maxLength) {
+        queries.push({ q: build(list), count: list.length });
+        list = [];
       }
-      ids.push(id);
+      list.push(c);
     });
-    if (ids.length) queries.push({ q: build(ids), count: ids.length });
+    if (list.length) queries.push({ q: build(list), count: list.length });
     return queries;
+  }
+
+  /** 日本語版を探す検索文 */
+  function japaneseSearchQueries(oracleIds, maxLength = MAX_QUERY_LENGTH) {
+    return orQueries('lang:ja', oracleIds.map((id) => 'oracleid:' + id), maxLength);
+  }
+
+  /** 英語の初版を探す検索文 */
+  function firstPrintingQueries(oracleIds, maxLength = MAX_QUERY_LENGTH) {
+    return orQueries('not:reprint', oracleIds.map((id) => 'oracleid:' + id), maxLength);
+  }
+
+  /** 初版と同じセットの日本語版を探す検索文。pairs = [{ oracleId, set }] */
+  function sameSetJapaneseQueries(pairs, maxLength = MAX_QUERY_LENGTH) {
+    return orQueries('lang:ja', pairs.map((p) => `(oracleid:${p.oracleId} set:${p.set})`), maxLength);
   }
 
   /**
@@ -192,10 +252,12 @@
           await sleep(ms);
           return request(url, init, { retryDelays, attempt: attempt + 1 });
         }
-        const err = new Error(timedOut
-          ? `Scryfall から応答がありません（${Math.round(timeoutMs / 1000)}秒）`
-          : `Scryfall に接続できません（${e && e.message ? e.message : e}）`);
+        const sec = Math.round(timeoutMs / 1000);
+        const detail = e && e.message ? e.message : String(e);
+        const err = new Error(timedOut ? `Scryfall から応答がありません（${sec}秒）` : `Scryfall に接続できません（${detail}）`);
         err.network = true;
+        err.code = timedOut ? 'timeout' : 'network'; // 画面側で言語に合わせて表示する
+        err.params = { sec, detail };
         throw err;
       } finally {
         if (timer) clearTimeout(timer);
@@ -207,7 +269,8 @@
       const body = await res.json().catch(() => null);
       if (res.status === 404 && body && body.object === 'error') return null; // 検索結果が0件
       if (!res.ok) {
-        throw new Error(`Scryfall エラー (${res.status})${body && body.details ? ': ' + body.details : ''}`);
+        const detail = body && body.details ? ': ' + body.details : '';
+        throw Object.assign(new Error(`Scryfall エラー (${res.status})${detail}`), { code: 'http', params: { status: res.status, detail } });
       }
       return body;
     }
@@ -331,6 +394,95 @@
       return { fetched: found.size, notFound };
     }
 
+    function needsImages(entry) {
+      return !!entry && !entry.notFound && entry.v === SCHEMA && entry.imgV !== IMAGE_VERSION;
+    }
+
+    /** 画像（初版）をまだ取っていないカード名（重複なし） */
+    function missingImages(names) {
+      const seen = new Set();
+      return names.filter((n) => {
+        const k = lookupKey(n);
+        if (seen.has(k) || !needsImages(cache[k])) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+
+    /** 検索してページを最後までたどり、結果をすべて返す（結果0件なら空） */
+    async function searchAll(params) {
+      const out = [];
+      let url = `${API}/cards/search?${new URLSearchParams(params)}`;
+      while (url) {
+        const body = await request(url);
+        if (!body) break;
+        out.push(...(body.data || []));
+        url = body.has_more ? body.next_page : null;
+      }
+      return out;
+    }
+
+    async function fetchImages(names) {
+      const entries = missingImages(names).map((n) => cache[lookupKey(n)]);
+      if (entries.length === 0) return { fetched: 0 };
+      const done = (e) => { e.imgV = IMAGE_VERSION; };
+
+      // 基本土地は最新の画像のまま（問い合わせなし）
+      entries.filter((e) => isBasicLand(e.name)).forEach(done);
+      const targets = entries.filter((e) => !isBasicLand(e.name) && e.oracleId);
+      entries.filter((e) => !isBasicLand(e.name) && !e.oracleId).forEach(done);
+
+      const byOracle = new Map();
+      targets.forEach((e) => {
+        if (!byOracle.has(e.oracleId)) byOracle.set(e.oracleId, []);
+        byOracle.get(e.oracleId).push(e);
+      });
+      const group = (cards) => {
+        const m = new Map();
+        cards.forEach((c) => {
+          const id = oracleIdOf(c);
+          if (!m.has(id)) m.set(id, []);
+          m.get(id).push(c);
+        });
+        return m;
+      };
+
+      // 1. 英語の初版
+      const firstSet = new Map();
+      for (const { q } of firstPrintingQueries([...byOracle.keys()])) {
+        const found = group(await searchAll({ q, unique: 'prints', order: 'released', dir: 'asc' }));
+        found.forEach((cards, id) => {
+          const print = oldestPrint(cards);
+          if (!print || !byOracle.has(id)) return;
+          firstSet.set(id, print.set);
+          byOracle.get(id).forEach((e) => { e.imageFirstEn = imageOf(print); e.firstSet = print.set; });
+        });
+      }
+
+      // 2. 初版と同じセットの日本語版（なければ英語の初版のまま）
+      const pairs = [...firstSet].map(([oracleId, set]) => ({ oracleId, set }));
+      for (const { q } of sameSetJapaneseQueries(pairs)) {
+        const found = group(await searchAll({ q, unique: 'prints', order: 'released', dir: 'asc' }));
+        found.forEach((cards, id) => {
+          const print = oldestPrint(cards.filter((c) => c.set === firstSet.get(id)));
+          const image = print && imageOf(print);
+          if (image && byOracle.has(id)) byOracle.get(id).forEach((e) => { e.imageFirstJa = image; });
+        });
+      }
+
+      targets.forEach(done);
+      saveCache();
+      return { fetched: entries.length };
+    }
+
+    /** 画像（初版）を裏で取得する。カード情報の取得のあとに順番に処理 */
+    function ensureImages(names) {
+      const run = () => fetchImages(names);
+      const p = queue.then(run, run);
+      queue = p.catch(() => {});
+      return p;
+    }
+
     /** 未取得のカード情報を取得してキャッシュする（同時に呼ばれても1件ずつ順番に処理） */
     function ensure(names, onProgress) {
       const run = () => fetchMissing(names, onProgress).finally(() => { onWait = null; });
@@ -347,23 +499,25 @@
     async function diagnose(loadImage) {
       const results = [];
       const noRetry = { retryDelays: [] };
+      // 結果：label / detail は日本語の文。value（取得できた名前など）と error（code 付き）で画面側が言語に合わせて表示する
       const step = async (id, label, fn) => {
         try {
-          const detail = await fn();
-          results.push({ id, label, ok: true, detail });
+          const r = await fn();
+          results.push({ id, label, ok: true, detail: r.detail, value: r.value });
           return true;
         } catch (e) {
-          results.push({ id, label, ok: false, detail: e && e.message ? e.message : String(e) });
+          results.push({ id, label, ok: false, detail: e && e.message ? e.message : String(e), error: e });
           return false;
         }
       };
+      const fail = (code, message) => Object.assign(new Error(message), { code });
 
       let imageUrl = null;
       await step('get', 'Scryfall API に接続（カード1枚の取得）', async () => {
         const card = await request(`${API}/cards/named?exact=Ancient%20Tomb`, {}, noRetry);
-        if (!card || card.name !== 'Ancient Tomb') throw new Error('想定外の応答です');
+        if (!card || card.name !== 'Ancient Tomb') throw fail('unexpected', '想定外の応答です');
         imageUrl = imageOf(card);
-        return `取得できました（${card.name}）`;
+        return { detail: `取得できました（${card.name}）`, value: card.name };
       });
       await step('post', 'まとめて取得（カード種類用）', async () => {
         const body = await request(`${API}/cards/collection`, {
@@ -371,27 +525,30 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ identifiers: [{ name: 'Ancient Tomb' }] }),
         }, noRetry);
-        if (!body || !body.data || !body.data.length) throw new Error('想定外の応答です');
-        return '取得できました';
+        if (!body || !body.data || !body.data.length) throw fail('unexpected', '想定外の応答です');
+        return { detail: '取得できました' };
       });
       await step('ja', '日本語名の検索', async () => {
         const body = await request(`${API}/cards/search?${new URLSearchParams({ q: 'lang:ja !"Ancient Tomb"', unique: 'cards' })}`, {}, noRetry);
         const ja = body && body.data && body.data[0] && japaneseNameOf(body.data[0]);
-        if (!ja) throw new Error('日本語名が見つかりませんでした');
-        return `取得できました（${ja}）`;
+        if (!ja) throw fail('noJa', '日本語名が見つかりませんでした');
+        return { detail: `取得できました（${ja}）`, value: ja };
       });
       await step('image', 'カード画像の読み込み（cards.scryfall.io）', async () => {
-        if (!imageUrl) throw new Error('API に接続できないため、画像のアドレスが分かりません');
+        if (!imageUrl) throw fail('noApi', 'API に接続できないため、画像のアドレスが分かりません');
         await loadImage(imageUrl);
-        return '読み込めました';
+        return { detail: '読み込めました', image: true };
       });
       return results;
     }
 
-    return { get, missing, ensure, clearCache, cacheSize, diagnose };
+    return { get, missing, ensure, missingImages, ensureImages, clearCache, cacheSize, diagnose };
   }
 
-  const api = { createCardService, lookupKey, frontFace, japaneseNameOf, imageOf, japaneseSearchQueries };
+  const api = {
+    createCardService, lookupKey, frontFace, japaneseNameOf, imageOf, japaneseSearchQueries,
+    firstPrintingQueries, sameSetJapaneseQueries, oldestPrint, pickImage, smallImage, isBasicLand,
+  };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;

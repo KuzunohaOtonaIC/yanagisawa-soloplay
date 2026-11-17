@@ -91,3 +91,14 @@ test('サイド後の構成でゲームを作ると、メインの構成どお�
   assert.equal(all.filter((x) => x.name === 'Island').length, 50);
   assert.equal(all.filter((x) => x.name === 'Pyroblast').length, 0);
 });
+
+const { configProblems } = require('../js/sideboard.js');
+
+test('configProblems：言語に依存しない形で理由を返す', () => {
+  const c = createConfig({ main: [{ count: 58, name: 'Island' }], side: [{ count: 17, name: 'Plains' }] });
+  assert.deepEqual(configProblems(c), [
+    { code: 'mainShort', main: 58, side: 17, n: 2 },
+    { code: 'sideOver', main: 58, side: 17, n: 2 },
+  ]);
+  assert.deepEqual(configProblems(createConfig(deck)), []);
+});

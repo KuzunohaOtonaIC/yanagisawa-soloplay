@@ -5,8 +5,32 @@
   const MTG = window.MTG;
   const {
     parseDeckList, countCards, deckToText, DeckStore, Prefs, createGame,
-    cardService, sortEntries, groupByCategory, categoryLabel, displayName, englishName,
+    cardService, sortEntries, groupByCategory, displayName: displayNameJa, englishName, t,
   } = window.MTG;
+
+  /** 英語のみ（業務用）か */
+  const isEn = () => MTG.getLang() === 'en';
+  /** 表示するカード名：英語のみ（業務用）では英語名、それ以外は日本語名（なければ英語名） */
+  function displayName(entry, info) {
+    return isEn() ? englishName(entry, info) : displayNameJa(entry, info);
+  }
+  /** カードの種類の表示名 */
+  function categoryLabel(id) {
+    return t('type.' + (id || 'unknown'));
+  }
+  /** デッキの表示名（組み込みデッキは英語のみ（業務用）で英語名） */
+  function deckLabel(deck) {
+    return isEn() && deck.nameEn ? deck.nameEn : deck.name;
+  }
+  /** 並び順（英語のみ（業務用）では「日本語名」は使わない） */
+  function effectiveSort() {
+    return isEn() && sortMode === 'ja' ? 'en' : sortMode;
+  }
+  /** Scryfall などのエラーを今の言語の文にする */
+  function errorText(e) {
+    if (e && e.code && MTG.I18N['err.' + e.code]) return t('err.' + e.code, e.params);
+    return (e && e.message) || String(e);
+  }
 
   const $ = (id) => document.getElementById(id);
   const el = {
@@ -130,7 +154,7 @@
   function saveDeckFromText(name, text) {
     const parsed = parseDeckList(text);
     if (parsed.main.length === 0) return { status: 'empty', parsed };
-    if (DeckStore.findByName(name) && !confirm(`「${name}」はすでに保存されています。上書きしますか？`)) {
+    if (DeckStore.findByName(name) && !confirm(t('editor.confirmOverwrite', { name }))) {
       return { status: 'cancelled', parsed };
     }
     const deck = DeckStore.save({ name, main: parsed.main, side: parsed.side });
@@ -138,23 +162,23 @@
   }
 
   function savedSummary(deck) {
-    return `「${deck.name}」を保存しました（メイン ${countCards(deck.main)}枚 / サイド ${countCards(deck.side)}枚）。`;
+    return t('editor.saved', { name: deck.name, main: countCards(deck.main), side: countCards(deck.side) });
   }
 
   function errorLines(parsed, prefix = '') {
-    return parsed.errors.map((e) => `${prefix}${e.line}行目: ${e.text}`);
+    return parsed.errors.map((e) => prefix + t('editor.parseLine', { line: e.line, text: e.text }));
   }
 
   function onSave() {
     const name = el.deckName.value.trim();
     if (!name) {
-      showMessage('warn', 'デッキ名を入力してください。');
+      showMessage('warn', t('editor.needName'));
       el.deckName.focus();
       return;
     }
     const result = saveDeckFromText(name, el.deckText.value);
     if (result.status === 'empty') {
-      showMessage('warn', 'メインデッキのカードが読み取れませんでした。「4 Ancient Tomb」の形式で入力してください。',
+      showMessage('warn', t('editor.noCards'),
         errorLines(result.parsed).slice(0, 10));
       return;
     }
@@ -162,7 +186,7 @@
 
     renderDeckSelect(result.deck.id);
     if (result.parsed.errors.length) {
-      showMessage('warn', savedSummary(result.deck) + ' 次の行は読み取れなかったため無視しました:', errorLines(result.parsed));
+      showMessage('warn', savedSummary(result.deck) + t('editor.ignoredLines'), errorLines(result.parsed));
     } else {
       showMessage('ok', savedSummary(result.deck));
     }
@@ -189,7 +213,7 @@
   async function loadFiles(fileList) {
     const files = [...fileList].filter((f) => /\.txt$/i.test(f.name) || f.type === 'text/plain');
     if (files.length === 0) {
-      showMessage('warn', 'txt ファイルを選んでください。');
+      showMessage('warn', t('editor.chooseTxt'));
       return;
     }
 
@@ -202,19 +226,19 @@
       try {
         text = await readTextFile(file);
       } catch (e) {
-        warnLines.push(`${file.name}: 読み込めませんでした`);
+        warnLines.push(t('editor.fileUnreadable', { file: file.name }));
         continue;
       }
       const result = saveDeckFromText(name, text);
       if (result.status === 'empty') {
-        warnLines.push(`${file.name}: カードが読み取れませんでした`);
+        warnLines.push(t('editor.fileNoCards', { file: file.name }));
         continue;
       }
       if (result.status === 'cancelled') continue;
 
       lastDeck = result.deck;
       okLines.push(savedSummary(result.deck));
-      warnLines.push(...errorLines(result.parsed, `${file.name} `).map((l) => l + '（無視しました）'));
+      warnLines.push(...errorLines(result.parsed, `${file.name} `).map((l) => l + t('editor.ignored')));
       if (files.length === 1) {
         el.deckName.value = name;
         el.deckText.value = text.replace(/^﻿/, '');
@@ -223,7 +247,7 @@
 
     if (lastDeck) renderDeckSelect(lastDeck.id);
     if (warnLines.length) {
-      showMessage('warn', okLines.join(' ') || '保存できたデッキはありません。', warnLines);
+      showMessage('warn', okLines.join(' ') || t('editor.nothingSaved'), warnLines);
     } else if (okLines.length) {
       showMessage('ok', okLines.join(' '));
     }
@@ -235,12 +259,12 @@
   function renderDeckSelect(selectId) {
     const presets = MTG.presetDecks();
     const saved = DeckStore.list().sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-    const option = (d) => h('option', { value: d.id, textContent: `${d.name}（${countCards(d.main)}枚）` });
+    const option = (d) => h('option', { value: d.id, textContent: t('decks.option', { name: deckLabel(d), n: countCards(d.main) }) });
 
     el.deckSelect.replaceChildren(
-      h('optgroup', { label: '組み込みデッキ' }, presets.map(option)),
-      h('optgroup', { label: '保存したデッキ' },
-        saved.length ? saved.map(option) : h('option', { value: '', disabled: true, textContent: '（まだありません）' })),
+      h('optgroup', { label: t('decks.groupPreset') }, presets.map(option)),
+      h('optgroup', { label: t('decks.groupSaved') },
+        saved.length ? saved.map(option) : h('option', { value: '', disabled: true, textContent: t('decks.none') })),
     );
     const all = [...presets, ...saved];
     el.deckSelect.value = all.some((d) => d.id === selectId) ? selectId : fallbackDeckId(saved);
@@ -258,7 +282,7 @@
 
   function cardLine(item, showType) {
     const { entry, info } = item;
-    const ja = info && info.jaName;
+    const ja = !isEn() && info && info.jaName;
     return h('li', { title: info ? info.typeLine : '' },
       h('span', { className: 'qty' }, entry.count),
       h('span', { className: 'name' }, displayName(entry, info)),
@@ -268,7 +292,7 @@
 
   function renderCardSection(title, list) {
     if (!list.length) return [];
-    const sorted = sortEntries(list, sortMode, (n) => cardService.get(n));
+    const sorted = sortEntries(list, effectiveSort(), (n) => cardService.get(n));
     const header = h('h4', null, title, ' ', h('span', { className: 'count' }, `(${countCards(list)})`));
 
     if (sortMode !== 'type') {
@@ -277,14 +301,15 @@
     return [
       header,
       ...groupByCategory(sorted).map((g) => h('div', { className: 'type-group' },
-        h('h5', null, g.label, ' ', h('span', { className: 'count' }, `(${g.count})`)),
+        h('h5', null, categoryLabel(g.category), ' ', h('span', { className: 'count' }, `(${g.count})`)),
         h('ul', { className: 'deck-list' }, g.items.map((it) => cardLine(it, false))))),
     ];
   }
 
   function renderSortButtons() {
     el.sortButtons.forEach((b) => {
-      const active = b.dataset.sort === sortMode;
+      b.hidden = isEn() && b.dataset.sort === 'ja'; // 英語のみ（業務用）では「日本語名」を出さない
+      const active = b.dataset.sort === effectiveSort();
       b.classList.toggle('active', active);
       b.setAttribute('aria-checked', String(active));
     });
@@ -299,18 +324,18 @@
       if (fetchState.error) {
         el.cardStatus.classList.add('warn');
         el.cardStatus.append(
-          h('span', null, `カード情報を取得できませんでした（${fetchState.error}）。英語名で表示しています。 `),
-          h('button', { type: 'button', className: 'link-btn', textContent: '再試行', onclick: () => loadCardInfo(deck) }),
+          h('span', null, t('fetch.failed', { error: errorText(fetchState.error) })),
+          h('button', { type: 'button', className: 'link-btn', textContent: t('fetch.retry'), onclick: () => loadCardInfo(deck) }),
           ' ',
-          h('button', { type: 'button', className: 'link-btn', textContent: '原因を調べる（接続チェック）', onclick: runDiagnose }));
+          h('button', { type: 'button', className: 'link-btn', textContent: t('fetch.diagnose'), onclick: runDiagnose }));
         return;
       }
-      const label = fetchState.phase === 'ja' ? '日本語名' : 'カード種類';
+      const label = fetchState.phase === 'ja' ? t('fetch.phaseJa') : t('fetch.phaseType');
       el.cardStatus.classList.add('busy');
       const progress = fetchState.total ? ` ${fetchState.done} / ${fetchState.total}` : '';
-      el.cardStatus.textContent = `Scryfall から${label}を取得中…${progress}`;
+      el.cardStatus.textContent = t('fetch.loading', { label, progress });
       if (fetchState.waiting != null) {
-        el.cardStatus.textContent += `（接続できなかったため、${fetchState.waiting}秒待って再試行しています。Scryfall の回数制限の可能性があります）`;
+        el.cardStatus.textContent += t('fetch.waiting', { sec: fetchState.waiting });
       }
       return;
     }
@@ -319,7 +344,7 @@
     const unknown = deckCardNames(deck).filter((n) => !cardService.get(n) && cardService.missing([n]).length === 0);
     if (unknown.length) {
       el.cardStatus.classList.add('warn');
-      el.cardStatus.textContent = `Scryfall で見つからなかったカード: ${unknown.join(', ')}（カード名の綴りを確認してください）`;
+      el.cardStatus.textContent = t('fetch.notFound', { names: unknown.join(', ') });
     }
   }
 
@@ -327,13 +352,13 @@
     const deck = selectedDeck();
     renderCardStatus(deck);
     if (!deck) {
-      el.deckDetail.replaceChildren(h('p', { className: 'empty' }, '左の欄からデッキを読み込んで保存してください。'));
+      el.deckDetail.replaceChildren(h('p', { className: 'empty' }, t('decks.empty')));
       return;
     }
     el.deckDetail.replaceChildren(
-      ...(deck.preset ? [h('p', { className: 'preset-note' }, '組み込みデッキです。「編集」で読み込むと、手を加えて自分のデッキとして保存できます。')] : []),
-      ...renderCardSection('メインデッキ', deck.main),
-      ...renderCardSection('サイドボード', deck.side),
+      ...(deck.preset ? [h('p', { className: 'preset-note' }, t('decks.presetNote'))] : []),
+      ...renderCardSection(t('decks.main'), deck.main),
+      ...renderCardSection(t('decks.side'), deck.side),
     );
   }
 
@@ -341,7 +366,7 @@
     const deck = selectedDeck();
     el.editBtn.disabled = !deck;
     el.deleteBtn.disabled = !deck || !!deck.preset;
-    el.deleteBtn.title = deck && deck.preset ? '組み込みデッキは削除できません' : '';
+    el.deleteBtn.title = deck && deck.preset ? t('decks.cannotDeletePreset') : '';
     el.startBtn.disabled = !deck || countCards(deck.main) === 0;
     if (deck) DeckStore.setSelectedId(deck.id);
     renderDeckDetail();
@@ -349,9 +374,26 @@
   }
 
   /** 選択中のデッキで未取得のカード情報を Scryfall から取得 */
+  /** 画像（初版）を裏で取得する。待たずに一覧やゲームを使える。取れたら描き直す */
+  let imagesLoading = null;
+  function loadImages(deck) {
+    if (el.imageMode.value === 'work') return; // 英語のみ（業務用）では画像を使わない
+    const names = deckCardNames(deck);
+    if (cardService.missingImages(names).length === 0 || imagesLoading === deck.id) return;
+    imagesLoading = deck.id;
+    cardService.ensureImages(names).then(() => {
+      if (game) renderGame();
+      if (match) (sideboarding ? renderSideboarding() : renderSideboardZone());
+    }).catch((e) => console.warn('画像の取得に失敗しました（文字で表示します）', e))
+      .finally(() => { if (imagesLoading === deck.id) imagesLoading = null; });
+  }
+
   function loadCardInfo(deck) {
     const names = deckCardNames(deck);
-    if (cardService.missing(names).length === 0) return;
+    if (cardService.missing(names).length === 0) {
+      loadImages(deck);
+      return;
+    }
     if (fetchState && fetchState.deckId === deck.id && !fetchState.error) return; // 取得中
 
     fetchState = { deckId: deck.id, phase: 'type', done: 0, total: 0 };
@@ -362,9 +404,10 @@
       if (selectedDeck() && selectedDeck().id === deck.id) renderCardStatus(deck);
     }).then(() => {
       if (fetchState && fetchState.deckId === deck.id) fetchState = null;
+      loadImages(deck);
     }).catch((e) => {
       console.error(e);
-      fetchState = { deckId: deck.id, error: e.message || String(e) };
+      fetchState = { deckId: deck.id, error: e };
     }).finally(() => {
       renderDeckDetail();
       if (game) renderGame();
@@ -376,7 +419,7 @@
   function setDeckTextExpanded(expanded) {
     el.deckText.classList.toggle('expanded', expanded);
     el.deckText.style.height = ''; // 手で大きさを変えていても、ボタンの大きさに戻す
-    el.expandBtn.textContent = expanded ? 'たたむ ▲' : '広げる ▼';
+    el.expandBtn.textContent = expanded ? t('editor.collapse') : t('editor.expand');
     el.expandBtn.setAttribute('aria-expanded', String(expanded));
   }
 
@@ -392,7 +435,7 @@
 
   function onDelete() {
     const deck = selectedDeck();
-    if (!deck || deck.preset || !confirm(`「${deck.name}」を削除しますか？`)) return;
+    if (!deck || deck.preset || !confirm(t('decks.confirmDelete', { name: deck.name }))) return;
     DeckStore.remove(deck.id);
     renderDeckSelect(null);
   }
@@ -402,9 +445,9 @@
   function loadImage(url, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      const timer = setTimeout(() => reject(new Error('応答がありません（15秒）')), timeoutMs);
+      const timer = setTimeout(() => reject(Object.assign(new Error('応答がありません（15秒）'), { code: 'imgTimeout' })), timeoutMs);
       img.onload = () => { clearTimeout(timer); resolve(); };
-      img.onerror = () => { clearTimeout(timer); reject(new Error('読み込めませんでした')); };
+      img.onerror = () => { clearTimeout(timer); reject(Object.assign(new Error('読み込めませんでした'), { code: 'imgError' })); };
       img.src = url;
     });
   }
@@ -412,51 +455,53 @@
   function diagnoseAdvice(results) {
     const ok = Object.fromEntries(results.map((r) => [r.id, r.ok]));
     if (!ok.get && !ok.post && !ok.ja) {
-      return [
-        'Scryfall（api.scryfall.com）に接続できません。次のどれかが考えられます。',
-        '・会社や学校などのネットワークで、このサイトへの接続が制限されている',
-        '・パソコンの日付・時刻が実際とずれている（ずれていると暗号化通信の確認に失敗します）',
-        '・セキュリティソフトやブラウザの拡張機能が通信を止めている',
-        '別のネットワーク（スマホのテザリングなど）で試すと、ネットワークが原因かどうか切り分けられます。',
-        'このアプリはカード情報なしでも英語名で動きます。',
-      ];
+      return ['diag.adviceBlocked1', 'diag.adviceBlocked2', 'diag.adviceBlocked3', 'diag.adviceBlocked4', 'diag.adviceBlocked5', 'diag.adviceBlocked6'].map((k) => t(k));
     }
     if (!ok.image) {
-      return [
-        'カード情報は取得できますが、画像のサーバー（cards.scryfall.io）に接続できません。',
-        'ネットワークの制限が考えられます。画像なしでも文字表示で使えます。',
-      ];
+      return [t('diag.adviceImage1'), t('diag.adviceImage2')];
     }
     if (!ok.post) {
-      return ['一部の取得方法が使えない環境ですが、自動で別の方法に切り替えて取得します。「再試行」を押してください。'];
+      return [t('diag.advicePost')];
     }
-    return ['接続は正常です。「カード情報のキャッシュを削除」を押すと取得し直します。'];
+    return [t('diag.adviceOk')];
+  }
+
+  /** 接続チェックの各項目の結果の文 */
+  function diagnoseDetail(r) {
+    if (r.ok) {
+      if (r.id === 'image') return t('diag.okImage');
+      if (r.id === 'ja' && isEn()) return t('diag.ok'); // 英語のみ（業務用）では日本語名を出さない
+      return r.value ? t('diag.okValue', { value: r.value }) : t('diag.ok');
+    }
+    const code = r.error && r.error.code;
+    if (code && MTG.I18N['diag.' + code]) return t('diag.' + code);
+    return r.error ? errorText(r.error) : r.detail;
   }
 
   async function runDiagnose() {
     el.diagnoseBtn.disabled = true;
     el.diagnoseResult.hidden = false;
     el.diagnoseResult.className = 'diagnose';
-    el.diagnoseResult.replaceChildren(h('p', null, '接続を確認しています…（最大1分ほど）'));
+    el.diagnoseResult.replaceChildren(h('p', null, t('diag.checking')));
     try {
       const results = await cardService.diagnose(loadImage);
       const allOk = results.every((r) => r.ok);
       el.diagnoseResult.classList.add(allOk ? 'ok' : 'warn');
       el.diagnoseResult.replaceChildren(
-        h('h4', null, '接続チェックの結果'),
+        h('h4', null, t('diag.title')),
         h('ul', { className: 'diagnose-list' }, results.map((r) =>
           h('li', { className: r.ok ? 'pass' : 'fail' },
             h('span', { className: 'mark' }, r.ok ? '✓' : '✗'),
-            h('span', null, r.label, '：', r.detail)))),
+            h('span', null, t('diag.label.' + r.id), isEn() ? ': ' : '：', diagnoseDetail(r))))),
         ...diagnoseAdvice(results).map((line) => h('p', null, line)),
-        h('p', { className: 'env' }, `ブラウザ情報: ${navigator.userAgent}／開き方: ${location.protocol}／パソコンの時刻: ${new Date().toLocaleString('ja-JP')}`));
+        h('p', { className: 'env' }, t('diag.env', { ua: navigator.userAgent, protocol: location.protocol, time: new Date().toLocaleString(isEn() ? 'en-US' : 'ja-JP') })));
     } finally {
       el.diagnoseBtn.disabled = false;
     }
   }
 
   function onClearCache() {
-    if (!confirm('Scryfall から取得したカード情報のキャッシュを削除して、取得し直しますか？')) return;
+    if (!confirm(t('decks.confirmClearCache'))) return;
     cardService.clearCache();
     onDeckSelected();
   }
@@ -485,18 +530,18 @@
     return game.phase === 'play' || (game.phase === 'opening' && game.mulligans === 0);
   }
 
+  /** 表示する画像（拡大表示用の normal の URL）。カードの表示には MTG.smallImage で小さい画像を使う */
   function imageUrl(info) {
-    if (!info || imageMode === 'none') return null;
-    if (imageMode === 'ja') return info.imageJa || info.imageEn || null;
-    return info.imageEn || null;
+    return MTG.pickImage(info, imageMode);
   }
 
   function cardTitle(card, info) {
-    return info ? `${displayName(card, info)}\n${englishName(card, info)}\n${info.typeLine}` : card.name;
+    if (!info) return card.name;
+    return isEn() ? `${englishName(card, info)}\n${info.typeLine}` : `${displayName(card, info)}\n${englishName(card, info)}\n${info.typeLine}`;
   }
 
   function textFace(card, info) {
-    const ja = info && info.jaName;
+    const ja = !isEn() && info && info.jaName;
     return [
       h('span', { className: 'card-name' }, displayName(card, info)),
       ja && h('span', { className: 'card-en' }, englishName(card, info)),
@@ -513,7 +558,7 @@
     }
     node.classList.add('has-image');
     node.dataset.preview = url;
-    const img = h('img', { src: url, alt: displayName(card, info), loading: 'lazy', draggable: false });
+    const img = h('img', { src: MTG.smallImage(url), alt: displayName(card, info), loading: 'lazy', draggable: false });
     img.addEventListener('error', () => {
       node.classList.remove('has-image');
       delete node.dataset.preview;
@@ -532,8 +577,8 @@
 
   function libraryButtons(card, { top = true, bottom = true } = {}) {
     return [
-      moveButton(card, 'top', '上へ', 'ライブラリーの一番上に置く', !top),
-      moveButton(card, 'bottom', '下へ', 'ライブラリーの一番下に置く', !bottom),
+      moveButton(card, 'top', t('move.top'), t('move.topTitle'), !top),
+      moveButton(card, 'bottom', t('move.bottom'), t('move.bottomTitle'), !bottom),
     ];
   }
 
@@ -543,18 +588,18 @@
     const bottomMode = game.phase === 'bottom';
     const acting = canAct();
     const clickable = bottomMode || acting;
-    const what = bottomMode ? 'ライブラリーの下に置くカードとして選ぶ' : '場に出す';
+    const what = bottomMode ? t('hand.clickBottom') : t('hand.clickPlay');
     const node = h('button', {
       type: 'button',
       className: 'card' + (clickable ? ' clickable' : ''),
-      title: cardTitle(card, info) + (clickable ? `\n（クリックで${what}）` : ''),
+      title: cardTitle(card, info) + (clickable ? '\n' + t('hand.clickTo', { what }) : ''),
     });
     node.dataset.iid = card.iid;
     fillCard(node, card, info);
     const order = game.bottomSelection.indexOf(card.iid);
     if (order >= 0) {
       node.classList.add('selected');
-      node.append(h('span', { className: 'order-badge' }, `下へ ${order + 1}`));
+      node.append(h('span', { className: 'order-badge' }, t('hand.bottomBadge', { n: order + 1 })));
     }
     if (card.iid === highlight) node.classList.add('is-new');
 
@@ -570,7 +615,7 @@
     const tile = h('button', {
       type: 'button',
       className: 'card clickable' + (card.tapped ? ' tapped' : ''),
-      title: `${cardTitle(card, info)}\n（クリックで${card.tapped ? 'アンタップ' : 'タップ'}）`,
+      title: `${cardTitle(card, info)}\n${card.tapped ? t('battlefield.clickUntap') : t('battlefield.clickTap')}`,
     });
     tile.dataset.iid = card.iid;
     tile.dataset.action = 'tap';
@@ -580,9 +625,9 @@
     const slot = h('div', { className: 'slot' + (card.tapped ? ' tapped' : ''), draggable: true },
       h('div', { className: 'slot-card' }, tile),
       h('div', { className: 'slot-actions' },
-        moveButton(card, 'graveyard', '墓地', '墓地へ置く'),
-        moveButton(card, 'hand', '手札', '手札に戻す'),
-        moveButton(card, 'exile', '追放', '追放する')),
+        moveButton(card, 'graveyard', t('move.graveyard'), t('move.graveyardTitle')),
+        moveButton(card, 'hand', t('move.hand'), t('move.handReturnTitle')),
+        moveButton(card, 'exile', t('move.exile'), t('move.exileTitle'))),
       h('div', { className: 'slot-actions' }, libraryButtons(card)));
     slot.dataset.iid = card.iid;
     return slot;
@@ -591,7 +636,7 @@
   /** 墓地・追放のカード（新しいものが上）。ボタンで手札・場・ライブラリーへ */
   function pileItem(card) {
     const info = cardService.get(card.name);
-    const ja = info && info.jaName;
+    const ja = !isEn() && info && info.jaName;
     const text = h('div', { className: 'pile-text' },
       h('span', { className: 'name' }, displayName(card, info)),
       ja && h('span', { className: 'en' }, englishName(card, info)));
@@ -600,8 +645,8 @@
     const li = h('li', { title: cardTitle(card, info) },
       text,
       h('div', { className: 'pile-actions' },
-        moveButton(card, 'hand', '手札', '手札に加える'),
-        moveButton(card, 'battlefield', '場', '場に出す'),
+        moveButton(card, 'hand', t('move.hand'), t('move.handTitle')),
+        moveButton(card, 'battlefield', t('move.battlefield'), t('move.battlefieldTitle')),
         libraryButtons(card)));
     if (card.iid === highlight) li.classList.add('is-new');
     return li;
@@ -610,8 +655,8 @@
   /** ライブラリーのカード（クリックで手札に加えてシャッフル、右のボタンで一番上・一番下へ） */
   function libraryItem(card, index, library) {
     const info = cardService.get(card.name);
-    const ja = info && info.jaName;
-    const btn = h('button', { type: 'button', className: 'lib-card', title: '手札に加えてシャッフル' },
+    const ja = !isEn() && info && info.jaName;
+    const btn = h('button', { type: 'button', className: 'lib-card', title: t('library.tutor') },
       h('span', { className: 'name' }, displayName(card, info)),
       ja && h('span', { className: 'en' }, englishName(card, info)));
     btn.dataset.iid = card.iid;
@@ -632,33 +677,33 @@
 
     el.mulliganBtn.hidden = phase !== 'opening';
     el.mulliganBtn.disabled = !MTG.canMulligan(game);
-    el.mulliganBtn.textContent = mulligans ? 'もう一度マリガン' : 'マリガン';
+    el.mulliganBtn.textContent = mulligans ? t('mull.again') : t('mull.mulligan');
     el.keepBtn.hidden = phase !== 'opening' || mulligans === 0;
     el.bottomBtn.hidden = phase !== 'bottom';
 
     if (phase === 'opening') {
       el.mulliganText.textContent = mulligans === 0
-        ? '初手です。マリガンしない場合は、そのままプレイを始めてください（キープ扱いになります）。'
-        : `マリガン ${mulligans} 回目の手札です。キープすると、手札から ${MTG.bottomCount(game)} 枚をライブラリーの下に置きます。`;
+        ? t('mull.opening')
+        : t('mull.after', { m: mulligans, n: MTG.bottomCount(game) });
     } else {
       const n = MTG.bottomCount(game);
       const selected = game.bottomSelection.length;
       el.mulliganText.textContent =
-        `ライブラリーの一番下に置くカードを手札から ${n} 枚選んでください（${selected} / ${n}）。選んだ順に下へ置きます。`;
+        t('mull.choose', { n, selected });
       el.bottomBtn.disabled = selected !== n;
-      el.bottomBtn.textContent = `決定（${n}枚を下へ）`;
+      el.bottomBtn.textContent = t('mull.confirmN', { n });
     }
   }
 
   function renderPile(listEl, countEl, cards) {
     listEl.replaceChildren(...cards.slice().reverse().map(pileItem));
-    if (cards.length === 0) listEl.append(h('li', { className: 'placeholder' }, '（なし）'));
+    if (cards.length === 0) listEl.append(h('li', { className: 'placeholder' }, t('zone.none')));
     countEl.textContent = `(${cards.length})`;
   }
 
   function renderGame() {
-    el.gameDeckName.textContent = game.deckName;
-    el.gameNumber.textContent = match ? `第${match.gameNumber}ゲーム` : '';
+    el.gameDeckName.textContent = match ? deckLabel(match.deck) : game.deckName;
+    el.gameNumber.textContent = match ? t('game.number', { n: match.gameNumber }) : '';
     el.turnCount.textContent = game.turn;
     renderMulliganBar();
 
@@ -672,15 +717,15 @@
     const sizeCount = drawAnchor == null ? game.hand.length : drawAnchor;
     el.hand.classList.toggle('compact', sizeCount > COMPACT_HAND);
     el.hand.classList.toggle('mini', sizeCount > MINI_HAND);
-    el.drawLeft.textContent = game.library.length ? `残り ${game.library.length} 枚` : 'ライブラリーなし';
+    el.drawLeft.textContent = game.library.length ? t('draw.left', { n: game.library.length }) : t('draw.empty');
     el.handCount.textContent = `(${game.hand.length})`;
     el.handHint.textContent = game.phase === 'bottom'
-      ? 'クリックでライブラリーの下に置くカードを選ぶ（もう一度クリックで選択解除）'
-      : canAct() ? 'クリックで場に出す。下のボタンでライブラリーの一番上／一番下へ' : 'キープするまで操作できません';
+      ? t('hand.hintBottom')
+      : canAct() ? t('hand.hintPlay') : t('hand.hintLocked');
 
     el.battlefield.replaceChildren(...game.battlefield.map(battlefieldSlot));
     if (game.battlefield.length === 0) {
-      el.battlefield.append(h('p', { className: 'placeholder' }, '（手札のカードをクリックすると、ここに出ます）'));
+      el.battlefield.append(h('p', { className: 'placeholder' }, t('battlefield.empty')));
     }
     el.battlefieldCount.textContent = `(${game.battlefield.length})`;
 
@@ -735,13 +780,13 @@
     game = JSON.parse(history.pop());
     highlight = null;
     renderGame();
-    showToast('元に戻しました');
+    showToast(t('toast.undo'));
   }
 
   function notReadyToast() {
     showToast(game.phase === 'bottom'
-      ? '先にライブラリーの下に置くカードを選んで「決定」を押してください'
-      : '「キープ」を押してから操作してください');
+      ? t('toast.needBottom')
+      : t('toast.needKeep'));
   }
 
   function onDraw() {
@@ -749,11 +794,11 @@
     if (!canAct()) return notReadyToast();
     const handBefore = game.hand.length;
     const card = act(() => MTG.draw(game));
-    if (!card) return showToast('ライブラリーにカードがありません');
+    if (!card) return showToast(t('toast.libraryEmpty'));
     if (drawAnchor == null) drawAnchor = handBefore;
     highlight = card.iid;
     renderGame();
-    showToast(`${nameOf(card)} を引きました`);
+    showToast(t('toast.drew', { name: nameOf(card) }));
   }
 
   function onNextTurn() {
@@ -766,8 +811,8 @@
     if (card && drawAnchor == null) drawAnchor = handBefore;
     highlight = card ? card.iid : null;
     renderGame();
-    showToast(card ? `ターン${game.turn}：アンタップして ${nameOf(card)} を引きました`
-      : `ターン${game.turn}：ライブラリーにカードがありません`);
+    showToast(card ? t('toast.nextTurnDrew', { turn: game.turn, name: nameOf(card) })
+      : t('toast.nextTurnEmpty', { turn: game.turn }));
   }
 
   function onMulligan() {
@@ -775,7 +820,7 @@
     releaseDrawAnchor();
     highlight = null;
     renderGame();
-    showToast(`マリガンしました（${game.mulligans}回目）`);
+    showToast(t('toast.mulliganed', { n: game.mulligans }));
   }
 
   function onKeep() {
@@ -789,7 +834,7 @@
     if (!act(() => MTG.confirmBottom(game))) return;
     releaseDrawAnchor();
     renderGame();
-    showToast(`${n}枚をライブラリーの下に置きました。プレイを始めてください`);
+    showToast(t('toast.bottomDone', { n }));
   }
 
   function onHandClick(e) {
@@ -800,7 +845,7 @@
     if (game.phase === 'bottom') {
       // 選択の切り替えは元に戻す対象にしない（もう一度クリックで外せる）
       if (!MTG.toggleBottom(game, iid)) {
-        showToast(`選べるのは ${MTG.bottomCount(game)} 枚までです`);
+        showToast(t('toast.bottomMax', { n: MTG.bottomCount(game) }));
         return;
       }
       renderGame();
@@ -879,14 +924,6 @@
     if (act(() => MTG.toggleTap(game, Number(btn.dataset.iid)))) renderGame();
   }
 
-  const MOVE_MESSAGE = {
-    hand: 'を手札に加えました',
-    battlefield: 'を場に出しました',
-    graveyard: 'を墓地に置きました',
-    exile: 'を追放しました',
-    top: 'をライブラリーの一番上に置きました',
-    bottom: 'をライブラリーの一番下に置きました',
-  };
 
   /** 「墓地」「手札」「場」「上へ」「下へ」などの移動ボタン */
   function onMoveClick(e) {
@@ -904,7 +941,7 @@
     if (to === 'hand') revealHandEnd();
     if (to === 'top') el.library.scrollTop = 0;
     if (to === 'bottom') el.library.scrollTop = el.library.scrollHeight;
-    showToast(`${nameOf(card)} ${MOVE_MESSAGE[to]}`);
+    showToast(t('moved.' + to, { name: nameOf(card) }));
   }
 
   function onLibraryClick(e) {
@@ -919,7 +956,7 @@
     renderGame();
     el.library.scrollTop = 0; // 並びが変わったので一番上（次に引くカード）を見せる
     revealHandEnd();
-    showToast(`${nameOf(card)} を手札に加え、ライブラリーをシャッフルしました`);
+    showToast(t('toast.tutored', { name: nameOf(card) }));
   }
 
   function onKeyDown(e) {
@@ -983,10 +1020,27 @@
   /** サイドボーディングの一覧の1行（クリックで反対側へ1枚） */
   function sbLine(item, zone) {
     const { entry, info } = item;
-    const ja = info && info.jaName;
+    const ja = !isEn() && info && info.jaName;
     const original = zone === 'main' ? match.deck.main : (match.deck.side || []);
     const delta = countDelta(zone === 'main' ? match.config.main : match.config.side, original, entry.name);
     const to = zone === 'main' ? 'side' : 'main';
+    const deltaBadge = delta !== 0 && h('span', { className: 'delta ' + (delta > 0 ? 'plus' : 'minus') }, delta > 0 ? `+${delta}` : `−${-delta}`);
+
+    // カード画像を表示する設定なら、画像のカードを並べる（枚数と増減は画像の上に重ねる）
+    if (showsImages()) {
+      const tile = h('button', {
+        type: 'button',
+        className: 'card sb-card sb-tile' + (sideboarding ? ' clickable' : ' locked'),
+        title: info ? cardTitle(entry, info) : entry.name,
+      });
+      fillCard(tile, entry, info);
+      tile.append(h('span', { className: 'sb-qty' }, `×${entry.count}`));
+      if (deltaBadge) tile.append(deltaBadge);
+      tile.dataset.name = entry.name;
+      tile.dataset.to = to;
+      return tile;
+    }
+
     const btn = h('button', {
       type: 'button',
       className: 'sb-card' + (sideboarding ? '' : ' locked'),
@@ -995,7 +1049,7 @@
       h('span', { className: 'qty' }, entry.count),
       h('span', { className: 'name' }, displayName(entry, info)),
       ja && h('span', { className: 'en' }, englishName(entry, info)),
-      delta !== 0 && h('span', { className: 'delta ' + (delta > 0 ? 'plus' : 'minus') }, delta > 0 ? `+${delta}` : `−${-delta}`));
+      deltaBadge);
     btn.dataset.name = entry.name;
     btn.dataset.to = to;
     const url = imageUrl(info);
@@ -1005,27 +1059,32 @@
 
   function sbList(container, list, zone) {
     if (list.length === 0) {
-      container.replaceChildren(h('p', { className: 'placeholder' }, zone === 'main' ? '（メインにカードがありません）' : '（サイドボードはありません）'));
+      container.replaceChildren(h('p', { className: 'placeholder' }, zone === 'main' ? t('sb.emptyMain') : t('sb.emptySide')));
       return;
     }
-    const sorted = sortEntries(list, sortMode, (n) => cardService.get(n));
+    const sorted = sortEntries(list, effectiveSort(), (n) => cardService.get(n));
     const groups = sortMode === 'type' ? groupByCategory(sorted) : [{ label: null, items: sorted }];
     container.replaceChildren(...groups.map((g) => h('div', { className: 'sb-group' },
-      g.label && h('h5', null, g.label, ' ', h('span', { className: 'count' }, `(${g.count})`)),
-      h('div', { className: 'sb-items' }, g.items.map((it) => sbLine(it, zone))))));
+      g.label && h('h5', null, categoryLabel(g.category), ' ', h('span', { className: 'count' }, `(${g.count})`)),
+      h('div', { className: 'sb-items' + (showsImages() ? ' tiles' : '') }, g.items.map((it) => sbLine(it, zone))))));
+  }
+
+  /** カード画像を表示する設定か（英語のみ（業務用）では表示しない） */
+  function showsImages() {
+    return imageMode === 'ja' || imageMode === 'en';
   }
 
   function diffView(container) {
     const d = MTG.configDiff(match.deck, match.config);
     if (d.in.length === 0 && d.out.length === 0) {
-      container.replaceChildren(h('p', { className: 'sb-nodiff' }, '元のリストのままです（入れ替えなし）'));
+      container.replaceChildren(h('p', { className: 'sb-nodiff' }, t('sb.noDiff')));
       return;
     }
-    const names = (list) => list.map((e) => `${displayName(e, cardService.get(e.name))} ×${e.count}`).join('、');
+    const names = (list) => list.map((e) => `${displayName(e, cardService.get(e.name))} ×${e.count}`).join(t('sb.listSep'));
     const total = (list) => list.reduce((s, e) => s + e.count, 0);
     container.replaceChildren(...[
-      d.in.length && h('p', { className: 'sb-in' }, h('strong', null, `IN（${total(d.in)}枚）`), ' ', names(d.in)),
-      d.out.length && h('p', { className: 'sb-out' }, h('strong', null, `OUT（${total(d.out)}枚）`), ' ', names(d.out)),
+      d.in.length && h('p', { className: 'sb-in' }, h('strong', null, t('sb.in', { n: total(d.in) })), ' ', names(d.in)),
+      d.out.length && h('p', { className: 'sb-out' }, h('strong', null, t('sb.out', { n: total(d.out) })), ' ', names(d.out)),
     ].filter(Boolean));
   }
 
@@ -1034,25 +1093,25 @@
     if (!match) return;
     const counts = MTG.configCounts(match.config);
     el.sideCount.textContent = `(${counts.side})`;
-    el.deckCounts.textContent = `メイン ${counts.main} 枚 ／ サイド ${counts.side} 枚`;
-    el.sideHint.textContent = sideboarding ? 'クリックでメインへ' : 'ゲーム中は入れ替えできません';
+    el.deckCounts.textContent = t('sb.counts', counts);
+    el.sideHint.textContent = sideboarding ? t('sb.toMain') : t('sb.locked');
     const { value, plan } = currentPlan();
-    el.sidePlanName.textContent = plan ? `サイドプラン：${plan.name}` : value === '__custom' ? 'サイドプラン：カスタム' : '';
+    el.sidePlanName.textContent = plan ? t('plan.current', { name: plan.name }) : value === '__custom' ? t('plan.currentCustom') : '';
     sbList(el.sideList, match.config.side, 'side');
     if (!sideboarding) diffView(el.sideDiff);
 
     const collapsed = !sideboarding && sideCollapsed;
     el.sideBody.hidden = collapsed;
-    el.sideToggle.textContent = collapsed ? 'ひらく ▼' : 'たたむ ▲';
+    el.sideToggle.textContent = collapsed ? t('sb.expand') : t('sb.collapse');
     el.sideToggle.setAttribute('aria-expanded', String(!collapsed));
   }
 
   function renderSideboarding() {
     if (!match) return;
     const counts = MTG.configCounts(match.config);
-    const problems = MTG.validateConfig(match.config);
-    el.gameDeckName.textContent = match.deck.name;
-    el.gameNumber.textContent = `第${match.gameNumber}ゲーム`;
+    const problems = MTG.configProblems(match.config).map((p) => t('sb.problem.' + p.code, p));
+    el.gameDeckName.textContent = deckLabel(match.deck);
+    el.gameNumber.textContent = t('game.number', { n: match.gameNumber });
     el.sbMainTotal.textContent = counts.main;
     el.sbSideTotal.textContent = counts.side;
     el.sbMainTotal.classList.toggle('bad', counts.main < MTG.MIN_MAIN);
@@ -1071,7 +1130,7 @@
     const btn = e.target.closest('.sb-card');
     if (!btn || !match) return;
     if (!sideboarding) {
-      showToast('ゲーム中は入れ替えできません（「次のゲーム」でサイドボーディングできます）');
+      showToast(t('sb.lockedToast'));
       return;
     }
     if (MTG.moveOne(match.config, btn.dataset.name, btn.dataset.to)) {
@@ -1108,20 +1167,20 @@
     const opt = (p) => h('option', { value: p.id, textContent: p.name });
     const { value, plan } = currentPlan();
     el.sbPlanSelect.replaceChildren(...[
-      h('option', { value: '', textContent: '（元のリスト）' }),
-      value === '__custom' && h('option', { value: '__custom', textContent: '（カスタム：手で入れ替え中）' }),
-      builtin.length && h('optgroup', { label: '組み込みプラン' }, builtin.map(opt)),
-      h('optgroup', { label: '保存したプラン' },
-        saved.length ? saved.map(opt) : h('option', { value: '__none', disabled: true, textContent: '（まだありません）' })),
+      h('option', { value: '', textContent: t('plan.original') }),
+      value === '__custom' && h('option', { value: '__custom', textContent: t('plan.custom') }),
+      builtin.length && h('optgroup', { label: t('plan.groupBuiltin') }, builtin.map(opt)),
+      h('optgroup', { label: t('plan.groupSaved') },
+        saved.length ? saved.map(opt) : h('option', { value: '__none', disabled: true, textContent: t('plan.none') })),
     ].filter(Boolean));
     el.sbPlanSelect.value = value;
 
     const problems = MTG.validateConfig(match.config);
     el.sbPlanSaveBtn.disabled = problems.length > 0 || value === '';
-    el.sbPlanSaveBtn.title = value === '' ? 'カードを入れ替えてから保存してください'
-      : problems.length ? '枚数のルールを満たしてから保存してください' : '今の入れ替えを、名前を付けてプランとして保存します';
+    el.sbPlanSaveBtn.title = value === '' ? t('plan.saveNeedSwap')
+      : problems.length ? t('plan.saveNeedRules') : t('plan.saveTitle');
     el.sbPlanDeleteBtn.disabled = !plan || plan.builtin;
-    el.sbPlanDeleteBtn.title = plan && plan.builtin ? '組み込みプランは削除できません' : '';
+    el.sbPlanDeleteBtn.title = plan && plan.builtin ? t('plan.cannotDeleteBuiltin') : '';
     el.sbPlanExportBtn.disabled = plans.length === 0;
   }
 
@@ -1130,17 +1189,17 @@
     if (value === '__custom' || value === '__none') return;
     if (value === '') {
       match.config = MTG.createConfig(match.deck);
-      setPlanMessage('元のリストに戻しました。');
+      setPlanMessage(t('plan.reset'));
     } else {
       const plan = plansFor(match.deck).find((p) => p.id === value);
       if (!plan) return;
       const { config, skipped } = MTG.applyPlan(match.deck, plan);
       match.config = config;
       if (skipped.length) {
-        const list = skipped.map((x) => `${displayName(x, cardService.get(x.name))} ×${x.count}（${x.to === 'main' ? 'サイドにない' : 'メインにない'}）`).join('、');
-        setPlanMessage(`「${plan.name}」を反映しました。ただし次のカードはデッキリストに見つからず、動かせませんでした：${list}`, 'warn');
+        const list = skipped.map((x) => t('plan.skippedItem', { name: displayName(x, cardService.get(x.name)), n: x.count, why: x.to === 'main' ? t('plan.notInSide') : t('plan.notInMain') })).join(t('sb.listSep'));
+        setPlanMessage(t('plan.appliedSkipped', { name: plan.name, list }), 'warn');
       } else {
-        setPlanMessage(`「${plan.name}」を反映しました。`);
+        setPlanMessage(t('plan.applied', { name: plan.name }));
       }
     }
     closePlanForm();
@@ -1162,27 +1221,27 @@
     e.preventDefault();
     const name = el.sbPlanName.value.trim();
     if (!name) {
-      setPlanMessage('プラン名を入力してください。', 'warn');
+      setPlanMessage(t('plan.needName'), 'warn');
       el.sbPlanName.focus();
       return;
     }
     if (MTG.validateConfig(match.config).length) return;
     if (MTG.presetSidePlans(match.deck.name).some((p) => p.name === name)) {
-      setPlanMessage(`「${name}」は組み込みプランと同じ名前なので使えません。`, 'warn');
+      setPlanMessage(t('plan.builtinName', { name }), 'warn');
       return;
     }
-    if (MTG.SidePlanStore.find(match.deck.name, name) && !confirm(`「${name}」はすでに保存されています。上書きしますか？`)) return;
+    if (MTG.SidePlanStore.find(match.deck.name, name) && !confirm(t('plan.confirmOverwrite', { name }))) return;
     MTG.SidePlanStore.save(match.deck.name, MTG.planFromConfig(match.deck, match.config, name));
     closePlanForm();
-    setPlanMessage(`「${name}」を保存しました。次からは選ぶだけで、この入れ替えが反映されます。`);
+    setPlanMessage(t('plan.saved', { name }));
     renderSideboarding();
   }
 
   function onPlanDelete() {
     const { plan } = currentPlan();
-    if (!plan || plan.builtin || !confirm(`サイドプラン「${plan.name}」を削除しますか？（今の入れ替えはそのままです）`)) return;
+    if (!plan || plan.builtin || !confirm(t('plan.confirmDelete', { name: plan.name }))) return;
     MTG.SidePlanStore.remove(plan.id);
-    setPlanMessage(`「${plan.name}」を削除しました。`);
+    setPlanMessage(t('plan.deleted', { name: plan.name }));
     renderSideboarding();
   }
 
@@ -1190,12 +1249,12 @@
     const plans = plansFor(match.deck);
     if (!plans.length) return;
     const blob = new Blob([MTG.exportPlansJSON(match.deck.name, plans)], { type: 'application/json' });
-    const a = h('a', { href: URL.createObjectURL(blob), download: `サイドプラン_${match.deck.name.replace(/[\\/:*?"<>|]/g, '_')}.json` });
+    const a = h('a', { href: URL.createObjectURL(blob), download: t('plan.fileName', { name: deckLabel(match.deck).replace(/[\\/:*?"<>|]/g, '_') }) });
     document.body.append(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    setPlanMessage(`${plans.length}件のサイドプランを書き出しました。`);
+    setPlanMessage(t('plan.exported', { n: plans.length }));
   }
 
   async function onPlanImport() {
@@ -1206,25 +1265,25 @@
     try {
       text = await readTextFile(file);
     } catch (e) {
-      setPlanMessage('ファイルを読み込めませんでした。', 'warn');
+      setPlanMessage(t('plan.fileUnreadable'), 'warn');
       return;
     }
     const result = MTG.parsePlansJSON(text);
     if (result.error) {
-      setPlanMessage(`読み込めませんでした：${result.error}`, 'warn');
+      setPlanMessage(t('plan.importFailed', { error: result.code ? t('plan.err.' + result.code, result.params) : result.error }), 'warn');
       return;
     }
     if (!result.plans.length) {
-      setPlanMessage('ファイルにサイドプランが入っていませんでした。', 'warn');
+      setPlanMessage(t('plan.importEmpty'), 'warn');
       return;
     }
     const dup = result.plans.filter((p) => MTG.SidePlanStore.find(p.deck, p.name)).length;
-    if (dup && !confirm(`${dup}件は同じ名前のプランがすでにあります。上書きしますか？`)) return;
+    if (dup && !confirm(t('plan.confirmImportOverwrite', { n: dup }))) return;
     const { added, replaced } = MTG.SidePlanStore.importMany(result.plans);
     const here = result.plans.filter((p) => p.deck === match.deck.name).length;
     const other = result.plans.length - here;
-    setPlanMessage(`${added + replaced}件読み込みました（新規${added}件・上書き${replaced}件）。`
-      + (other ? `うち${other}件は別のデッキ用なので、そのデッキを開くと出てきます。` : ''));
+    setPlanMessage(t('plan.imported', { total: added + replaced, added, replaced })
+      + (other ? t('plan.importedOther', { n: other }) : ''));
     renderSideboarding();
   }
 
@@ -1284,7 +1343,7 @@
     closeNextGameMenu();
     if (mode === 'start' && MTG.validateConfig(match.config).length === 0) {
       startGame();
-      showToast(`第${match.gameNumber}ゲームを開始しました`);
+      showToast(t('game.started', { n: match.gameNumber }));
       return;
     }
     enterSideboarding();
@@ -1301,9 +1360,9 @@
     el.nextGameBtn.setAttribute('aria-expanded', String(open));
     if (open) {
       // 入れ替えをしていないときは、そのことを2行目に添える
-      const label = '現在の構成を引き継いで開始';
+      const label = t('game.nextStart');
       if (MTG.isOriginal(match.deck, match.config)) {
-        el.nextStartBtn.replaceChildren(label, h('br'), h('small', { className: 'menu-note' }, '(今はメインのまま)'));
+        el.nextStartBtn.replaceChildren(label, h('br'), h('small', { className: 'menu-note' }, t('game.nextStartNote')));
       } else {
         el.nextStartBtn.replaceChildren(label);
       }
@@ -1413,10 +1472,36 @@
   window.addEventListener('scroll', hidePreview, { passive: true });
   el.library.addEventListener('scroll', hidePreview, { passive: true });
 
-  el.imageMode.value = ['none', 'ja', 'en'].includes(Prefs.get('imageMode', 'ja')) ? Prefs.get('imageMode', 'ja') : 'ja';
-  el.imageMode.addEventListener('change', () => Prefs.set('imageMode', el.imageMode.value));
+  // カード画像の設定。以前の「表示しない（文字だけ）」は、いきなり英語にならないよう「表示する（日本語版を優先）」に移す
+  const savedImageMode = Prefs.get('imageMode', 'ja');
+  el.imageMode.value = ['ja', 'en', 'work'].includes(savedImageMode) ? savedImageMode : 'ja';
+  if (savedImageMode !== el.imageMode.value) Prefs.set('imageMode', el.imageMode.value);
+  el.imageMode.addEventListener('change', () => {
+    Prefs.set('imageMode', el.imageMode.value);
+    const lang = el.imageMode.value === 'work' ? 'en' : 'ja';
+    if (lang !== MTG.getLang()) {
+      MTG.setLang(lang);
+      refreshLanguage();
+    }
+    const deck = selectedDeck();
+    if (deck) loadImages(deck);
+  });
+
+  /** 言語を切り替えたあと、画面全体の文言を描き直す（切り替えられるのはデッキ画面） */
+  function refreshLanguage() {
+    MTG.applyI18n();
+    setDeckTextExpanded(el.deckText.classList.contains('expanded'));
+    el.parseMessage.replaceChildren();
+    el.diagnoseResult.hidden = true;
+    renderSortButtons();
+    renderDeckSelect(el.deckSelect.value);
+  }
   document.addEventListener('keydown', onKeyDown);
 
+  MTG.setLang(el.imageMode.value === 'work' ? 'en' : 'ja');
+  MTG.applyI18n();
+  setDeckTextExpanded(false);
   renderSortButtons();
   renderDeckSelect(DeckStore.getSelectedId());
+  document.documentElement.classList.add('i18n-ready'); // 言語を決めてから画面を見せる
 })();

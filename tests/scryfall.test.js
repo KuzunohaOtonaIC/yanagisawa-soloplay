@@ -278,3 +278,110 @@ test('代表の版に日本語名がないカードは、全部の版から日�
   assert.ok(!searches[1].get('q').includes('o-tomb'));
   assert.ok(searches[1].get('q').includes('o-shelldock') && searches[1].get('q').includes('o-scrub'));
 });
+
+const { firstPrintingQueries, sameSetJapaneseQueries, oldestPrint, pickImage, smallImage, isBasicLand } = require('../js/scryfall.js');
+
+test('画像の選び方：日本語版は初版と同じセットの日本語版 → 英語の初版、基本土地は最新', () => {
+  const info = { name: 'Ancient Tomb', imageEn: 'en-new', imageJa: 'ja-new', imageFirstEn: 'en-tmp', imageFirstJa: 'ja-tmp' };
+  assert.equal(pickImage(info, 'ja'), 'ja-tmp');
+  assert.equal(pickImage(info, 'en'), 'en-tmp');
+  assert.equal(pickImage({ ...info, imageFirstJa: null }, 'ja'), 'en-tmp'); // 同じセットの日本語版がない
+  assert.equal(pickImage({ name: 'Ancient Tomb', imageEn: 'en-new', imageJa: 'ja-new' }, 'ja'), 'ja-new'); // 初版の取得前
+  const mountain = { name: 'Mountain', imageEn: 'm-en-new', imageJa: 'm-ja-new', imageFirstEn: 'm-lea' };
+  assert.equal(pickImage(mountain, 'ja'), 'm-ja-new');
+  assert.equal(pickImage(mountain, 'en'), 'm-en-new');
+  assert.equal(pickImage(info, 'work'), null); // 英語のみ（業務用）では画像なし
+  assert.equal(pickImage(null, 'ja'), null);
+  assert.ok(isBasicLand('Wastes') && !isBasicLand('Snow-Covered Island'));
+  assert.equal(smallImage('https://cards.scryfall.io/normal/front/a/b.jpg?1'), 'https://cards.scryfall.io/small/front/a/b.jpg?1');
+});
+
+test('一番古い版を選ぶ（同じ日ならプロモ・特殊枠でない通常の版）', () => {
+  const cards = [
+    { released_at: '2022-02-18', promo: false, frame_effects: ['showcase'], collector_number: '300', set: 'neo' },
+    { released_at: '2022-02-18', promo: true, collector_number: '1p', set: 'pneo' },
+    { released_at: '2022-02-18', promo: false, collector_number: '141', set: 'neo' },
+    { released_at: '2023-01-01', promo: false, collector_number: '5', set: 'xyz' },
+  ];
+  assert.equal(oldestPrint(cards).collector_number, '141');
+  assert.equal(oldestPrint([]), null);
+});
+
+test('初版・同じセットの日本語版の検索文は900文字以内に分ける', () => {
+  const ids = Array.from({ length: 40 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+  const q1 = firstPrintingQueries(ids);
+  assert.ok(q1.every((x) => x.q.startsWith('not:reprint (') && x.q.length <= 900));
+  assert.equal(q1.reduce((n, x) => n + x.count, 0), 40);
+  const q2 = sameSetJapaneseQueries(ids.map((oracleId) => ({ oracleId, set: 'tmp' })));
+  assert.ok(q2.every((x) => x.q.startsWith('lang:ja (') && x.q.length <= 900));
+  assert.match(q2[0].q, /\(oracleid:[\w-]+ set:tmp\)/);
+  assert.equal(q2.reduce((n, x) => n + x.count, 0), 40);
+});
+
+test('画像は名前・種類の取得のあとに裏で取り、基本土地は問い合わせない', async () => {
+  const PRINTS = {
+    'o-tomb': [
+      { lang: 'en', set: 'tmp', released_at: '1997-10-14', img: 'en-tmp' },
+      { lang: 'en', set: 'tpr', released_at: '2015-01-01', img: 'en-tpr' },
+      { lang: 'ja', set: 'tmp', released_at: '1997-10-14', img: 'ja-tmp' },
+      { lang: 'ja', set: 'zne', released_at: '2020-01-01', img: 'ja-zne' },
+    ],
+    'o-vault': [ // 初版（Alliances）に日本語版がない
+      { lang: 'en', set: 'all', released_at: '1996-06-10', img: 'en-all' },
+      { lang: 'ja', set: 'c13', released_at: '2013-11-01', img: 'ja-c13' },
+    ],
+  };
+  CARDS.mountain = { name: 'Mountain', type_line: 'Basic Land — Mountain', cmc: 0, oracle_id: 'o-mountain', ja: '山' };
+  const base = fakeScryfall();
+  const searches = [];
+  const fetchImpl = async (url, init) => {
+    if (url.includes('/cards/search') && /not:reprint|set:/.test(new URL(url).searchParams.get('q'))) {
+      const q = new URL(url).searchParams.get('q');
+      searches.push(q);
+      const isJa = q.startsWith('lang:ja');
+      const data = [];
+      if (isJa) {
+        for (const m of q.matchAll(/\(oracleid:([\w-]+) set:(\w+)\)/g)) {
+          (PRINTS[m[1]] || []).filter((p) => p.lang === 'ja' && p.set === m[2]).forEach((p) => data.push({ oracle_id: m[1], set: p.set, released_at: p.released_at, image_uris: { normal: p.img } }));
+        }
+      } else {
+        for (const m of q.matchAll(/oracleid:([\w-]+)/g)) {
+          const en = (PRINTS[m[1]] || []).filter((p) => p.lang === 'en');
+          if (en.length) data.push(...en.slice(0, 1).map((p) => ({ oracle_id: m[1], set: p.set, released_at: p.released_at, image_uris: { normal: p.img } })));
+        }
+      }
+      if (!data.length) return { status: 404, ok: false, json: async () => ({ object: 'error', status: 404 }) };
+      return { status: 200, ok: true, json: async () => ({ data, has_more: false }) };
+    }
+    return base.fetchImpl(url, init);
+  };
+  const storage = memoryStorage();
+  const service = createCardService({ fetchImpl, storage, delayMs: 0, networkRetryDelaysMs: [] });
+  const names = ['Ancient Tomb', "Lim-Dul's Vault", 'Mountain'];
+  await service.ensure(names);
+  assert.equal(service.get('Ancient Tomb').imageFirstEn, undefined); // 名前・種類の時点ではまだ
+  assert.deepEqual(service.missingImages(names), names);
+
+  await service.ensureImages(names);
+  assert.equal(searches.length, 2); // 初版1回 + 同じセットの日本語版1回（基本土地は含めない）
+  assert.ok(!searches.some((q) => q.includes('o-mountain')));
+  const tomb = service.get('Ancient Tomb');
+  assert.equal(pickImage(tomb, 'ja'), 'ja-tmp');
+  assert.equal(pickImage(tomb, 'en'), 'en-tmp');
+  const vault = service.get("Lim-Dul's Vault");
+  assert.equal(pickImage(vault, 'ja'), 'en-all'); // 同じセットの日本語版がないので英語の初版
+  assert.deepEqual(service.missingImages(names), []);
+
+  // 開き直しても取り直さない
+  const again = createCardService({ fetchImpl, storage, delayMs: 0, networkRetryDelaysMs: [] });
+  assert.deepEqual(again.missingImages(names), []);
+  await again.ensureImages(names);
+  assert.equal(searches.length, 2);
+});
+
+test('接続エラーには code が付く（画面側で言語に合わせて表示）', async () => {
+  const service = createCardService({ fetchImpl: async () => { throw new TypeError('Failed to fetch'); }, storage: memoryStorage(), delayMs: 0, networkRetryDelaysMs: [] });
+  await assert.rejects(service.ensure(['Ancient Tomb']), (e) => e.code === 'network' && e.params.detail === 'Failed to fetch');
+  const http = createCardService({ fetchImpl: async () => ({ status: 500, ok: false, json: async () => ({ details: 'boom' }) }), storage: memoryStorage(), delayMs: 0, networkRetryDelaysMs: [] });
+  await assert.rejects(http.ensure(['Ancient Tomb']), (e) => e.code === 'http' && e.params.status === 500);
+});

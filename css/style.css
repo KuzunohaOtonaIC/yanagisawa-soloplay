@@ -56,6 +56,9 @@ main { padding: 16px 20px 32px; }
 
 [hidden] { display: none !important; }
 
+/* 英語のみ（業務用）：英語に切り替わるまで画面を隠す（日本語が一瞬出ないように） */
+html.i18n-en:not(.i18n-ready) body { visibility: hidden; }
+
 /* ---------- 共通部品 ---------- */
 button, select, input, textarea {
   font: inherit;
@@ -676,3 +679,45 @@ html, body, #hand, #hand * { overflow-anchor: none; }
 .sb-plan-msg.warn { color: var(--danger); font-weight: 600; }
 .side-plan-name { font-size: .85rem; font-weight: 600; color: #f3d27a; }
 .side-plan-name:empty { display: none; }
+
+/* サイドボーディング：画像のカード */
+.sb-items.tiles { grid-template-columns: repeat(auto-fill, 104px); gap: 8px; }
+/* .sb-card（文字の行）の見た目を、カードの見た目に戻す */
+.sb-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 104px;
+  padding: 8px;
+  border: 2px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--text);
+}
+.sb-tile.has-image { padding: 0; }
+.sb-tile.locked { cursor: default; }
+.sb-tile .sb-qty {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .78);
+  color: #fff;
+  font-size: .8rem;
+  font-weight: 700;
+}
+.sb-tile .delta {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 700;
+}
+.sb-tile .delta.plus { background: #2e7d4f; color: #fff; }
+.sb-tile .delta.minus { background: #b3261e; color: #fff; }
+@media (max-width: 760px) {
+  .sb-items.tiles { grid-template-columns: repeat(auto-fill, 92px); }
+}

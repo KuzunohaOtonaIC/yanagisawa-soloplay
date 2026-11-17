@@ -13,6 +13,7 @@
   const PRESETS = [
     {
       id: 'preset:jujutsu-shosen',
+      nameEn: 'Yanagisawa Curse Telling College', // 英語のみ（業務用）での表示名
       name: '柳澤流呪術唱専',
       text: `
 4 Ancient Tomb
@@ -55,6 +56,7 @@ SIDEBOARD:
     },
     {
       id: 'preset:hogaak',
+      nameEn: 'BU Hogaak (Yanagisawa Style)', // 英語のみ（業務用）での表示名
       name: "柳澤流ホガーク(本人歌唱)",
       text: `
 3 Verdant Catacombs
@@ -95,6 +97,7 @@ Sideboard
     },
     {
       id: 'preset:lo',
+      nameEn: 'Welcome LO Fan club', // 英語のみ（業務用）での表示名
       name: "LO友の会会長作品",
       text: `
 4 Hedron Crab
@@ -150,7 +153,7 @@ Sideboard
       cache = PRESETS.map((p) => {
         const parsed = parseDeckList(p.text);
         return {
-          id: p.id, name: p.name, main: parsed.main, side: parsed.side, preset: true, errors: parsed.errors,
+          id: p.id, name: p.name, nameEn: p.nameEn, main: parsed.main, side: parsed.side, preset: true, errors: parsed.errors,
           sidePlans: (p.sidePlans || []).map((plan) => ({ ...plan, id: `builtin:${p.id}:${plan.name}`, builtin: true })),
         };
       });

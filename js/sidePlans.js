@@ -77,13 +77,13 @@
     try {
       data = JSON.parse(String(text).replace(/^﻿/, ''));
     } catch (e) {
-      return { error: 'JSON として読み取れませんでした。' };
+      return { error: 'JSON として読み取れませんでした。', code: 'json' };
     }
     if (!data || typeof data !== 'object' || data.format !== FORMAT) {
-      return { error: 'このアプリで書き出したサイドプランのファイルではありません。' };
+      return { error: 'このアプリで書き出したサイドプランのファイルではありません。', code: 'format' };
     }
-    if (data.version !== VERSION) return { error: `対応していない形式です（version ${data.version}）。` };
-    if (!Array.isArray(data.plans)) return { error: 'plans が見つかりません。' };
+    if (data.version !== VERSION) return { error: `対応していない形式です（version ${data.version}）。`, code: 'version', params: { version: data.version } };
+    if (!Array.isArray(data.plans)) return { error: 'plans が見つかりません。', code: 'plans' };
 
     const isText = (v) => typeof v === 'string' && v.trim() !== '';
     const isCards = (list) => Array.isArray(list) && list.every((e) =>
@@ -92,10 +92,10 @@
     for (let i = 0; i < data.plans.length; i++) {
       const p = data.plans[i];
       const where = `${i + 1}件目`;
-      if (!p || !isText(p.deck)) return { error: `${where}：デッキ名（deck）がありません。` };
-      if (!isText(p.name)) return { error: `${where}：プラン名（name）がありません。` };
+      if (!p || !isText(p.deck)) return { error: `${where}：デッキ名（deck）がありません。`, code: 'deck', params: { i: i + 1 } };
+      if (!isText(p.name)) return { error: `${where}：プラン名（name）がありません。`, code: 'name', params: { i: i + 1 } };
       if (!isCards(p.in || []) || !isCards(p.out || [])) {
-        return { error: `${where}（${p.name}）：in / out は [{"count": 枚数, "name": "カード名"}] の形にしてください。` };
+        return { error: `${where}（${p.name}）：in / out は [{"count": 枚数, "name": "カード名"}] の形にしてください。`, code: 'cards', params: { i: i + 1, name: p.name } };
       }
       plans.push({ deck: p.deck.trim(), name: p.name.trim(), in: cleanList(p.in), out: cleanList(p.out) });
     }

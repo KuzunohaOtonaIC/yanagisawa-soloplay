@@ -87,3 +87,12 @@ test('不正な JSON は分かりやすいエラーで拒否する', () => {
   assert.match(parsePlansJSON(JSON.stringify({ ...base, plans: [{ deck: 'd', name: 'a', in: [{ count: 0, name: 'X' }], out: [] }] })).error, /in \/ out は/);
   assert.deepEqual(parsePlansJSON(JSON.stringify({ ...base, plans: [] })).plans, []);
 });
+
+test('不正な JSON のエラーには code が付く（画面側で言語に合わせて表示）', () => {
+  assert.equal(parsePlansJSON('{oops').code, 'json');
+  assert.equal(parsePlansJSON('{"plans": []}').code, 'format');
+  const base = { format: 'yanagisawa-soloplay-sideplans', version: 1 };
+  const r = parsePlansJSON(JSON.stringify({ ...base, plans: [{ deck: 'd', name: 'a', in: [{ count: 0, name: 'X' }], out: [] }] }));
+  assert.equal(r.code, 'cards');
+  assert.deepEqual(r.params, { i: 1, name: 'a' });
+});

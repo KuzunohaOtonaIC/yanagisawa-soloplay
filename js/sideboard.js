@@ -52,13 +52,23 @@
     return true;
   }
 
-  /** 枚数のルールを満たしていなければ、その理由（なければ空の配列） */
-  function validateConfig(config) {
+  /**
+   * 枚数のルールを満たしていない理由（言語に依存しない形）。なければ空の配列
+   * @returns {{code: 'mainShort'|'sideOver', main, side, n}[]}
+   */
+  function configProblems(config) {
     const { main, side } = configCounts(config);
     const problems = [];
-    if (main < MIN_MAIN) problems.push(`メインが${main}枚です。${MIN_MAIN}枚以上にしてください（あと${MIN_MAIN - main}枚）。`);
-    if (side > MAX_SIDE) problems.push(`サイドが${side}枚です。${MAX_SIDE}枚以下にしてください（${side - MAX_SIDE}枚多い）。`);
+    if (main < MIN_MAIN) problems.push({ code: 'mainShort', main, side, n: MIN_MAIN - main });
+    if (side > MAX_SIDE) problems.push({ code: 'sideOver', main, side, n: side - MAX_SIDE });
     return problems;
+  }
+
+  /** 枚数のルールを満たしていなければ、その理由（日本語の文。なければ空の配列） */
+  function validateConfig(config) {
+    return configProblems(config).map((p) => (p.code === 'mainShort'
+      ? `メインが${p.main}枚です。${MIN_MAIN}枚以上にしてください（あと${p.n}枚）。`
+      : `サイドが${p.side}枚です。${MAX_SIDE}枚以下にしてください（${p.n}枚多い）。`));
   }
 
   /**
@@ -86,7 +96,7 @@
     return d.in.length === 0 && d.out.length === 0;
   }
 
-  const api = { MIN_MAIN, MAX_SIDE, createConfig, configCounts, moveOne, validateConfig, configDiff, isOriginal };
+  const api = { MIN_MAIN, MAX_SIDE, createConfig, configCounts, moveOne, configProblems, validateConfig, configDiff, isOriginal };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
