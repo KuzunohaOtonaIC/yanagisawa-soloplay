@@ -5,7 +5,7 @@ const { countCards } = require('../js/parser.js');
 
 test('組み込みデッキはすべて読み取りエラーなし、メイン60枚以上・サイド15枚', () => {
   const decks = presetDecks();
-  assert.deepEqual(decks.map((d) => d.name), ['柳澤流呪術唱専', '柳澤流ホガーク(本人歌唱)', 'LO友の会会長作品']);
+  assert.deepEqual(decks.map((d) => d.name), ['柳澤流ホガーク(本人歌唱)', '柳澤流呪術唱専', 'LO友の会会長作品']);
   decks.forEach((d) => {
     assert.deepEqual(d.errors, [], d.name);
     assert.ok(countCards(d.main) >= 60, `${d.name}: メイン ${countCards(d.main)}枚`);
@@ -15,7 +15,7 @@ test('組み込みデッキはすべて読み取りエラーなし、メイン60
   });
   assert.equal(countCards(getPreset('preset:jujutsu-shosen').main), 60);
   assert.equal(getPreset('preset:white-curse'), null); // 削除済み
-  assert.equal(defaultPreset().name, '柳澤流呪術唱専');
+  assert.equal(defaultPreset().name, '柳澤流ホガーク(本人歌唱)');
   assert.equal(countCards(getPreset('preset:hogaak').main), 60);
   assert.equal(countCards(getPreset('preset:lo').main), 61);
   assert.ok(!isPresetId('d123'));

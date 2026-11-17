@@ -175,5 +175,8 @@ yanagisawa-soloplay/
   - 組み込みデッキの英語名：Yanagisawa Curse Telling College／BU Hogaak (Yanagisawa Style)／Welcome LO Fan club。アプリ名：Yanagisawa Solo Play Tool
   - 以前「表示しない」を選んでいた人は「表示する（日本語版を優先）」に移す
 
+### 既定のデッキの変更
+- [x] 初めて開いた人に表示する既定のデッキを、柳澤流呪術唱専から柳澤流ホガーク(本人歌唱)に（一般向け）。組み込みデッキの並びも先頭に
+
 ### 今後の候補
 - トークン、カウンター、ライフの記録

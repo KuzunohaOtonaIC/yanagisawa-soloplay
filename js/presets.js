@@ -12,6 +12,47 @@
 
   const PRESETS = [
     {
+      id: 'preset:hogaak',
+      nameEn: 'BU Hogaak (Yanagisawa Style)', // 英語のみ（業務用）での表示名
+      name: "柳澤流ホガーク(本人歌唱)",
+      text: `
+3 Verdant Catacombs
+2 Marsh Flats
+2 Polluted Delta
+2 Bloodstained Mire
+4 Underground Sea
+1 Undercity Sewers
+1 Swamp
+3 Wasteland
+4 Hogaak, Arisen Necropolis
+4 Moonshadow
+4 Dark Matter Manipulator
+4 Stitcher's Supplier
+3 Orcish Bowmasters
+2 Brazen Borrower
+4 Brainstorm
+4 Ponder
+4 Daze
+4 Force of Will
+3 Thoughtseize
+2 Fatal Push
+
+Sideboard
+3 Consign to Memory
+3 Dauthi Voidwalker
+2 Barrowgoyf
+2 Massacre
+1 Brazen Borrower
+1 Fatal Push
+1 Legion's End
+1 Engineered Explosives
+1 Force of Negation
+`,
+      // 組み込みサイドプラン（誰が開いても最初から入っている）。例：
+      // { name: 'vsホガーク', in: [{ count: 2, name: 'Rest in Peace' }], out: [{ count: 2, name: 'Defense Grid' }] }
+      sidePlans: [],
+    },
+    {
       id: 'preset:jujutsu-shosen',
       nameEn: 'Yanagisawa Curse Telling College', // 英語のみ（業務用）での表示名
       name: '柳澤流呪術唱専',
@@ -49,47 +90,6 @@ SIDEBOARD:
 4 Rest in Peace
 1 Sanctum Prelate
 1 The Stone Brain
-`,
-      // 組み込みサイドプラン（誰が開いても最初から入っている）。例：
-      // { name: 'vsホガーク', in: [{ count: 2, name: 'Rest in Peace' }], out: [{ count: 2, name: 'Defense Grid' }] }
-      sidePlans: [],
-    },
-    {
-      id: 'preset:hogaak',
-      nameEn: 'BU Hogaak (Yanagisawa Style)', // 英語のみ（業務用）での表示名
-      name: "柳澤流ホガーク(本人歌唱)",
-      text: `
-3 Verdant Catacombs
-2 Marsh Flats
-2 Polluted Delta
-2 Bloodstained Mire
-4 Underground Sea
-1 Undercity Sewers
-1 Swamp
-3 Wasteland
-4 Hogaak, Arisen Necropolis
-4 Moonshadow
-4 Dark Matter Manipulator
-4 Stitcher's Supplier
-3 Orcish Bowmasters
-2 Brazen Borrower
-4 Brainstorm
-4 Ponder
-4 Daze
-4 Force of Will
-3 Thoughtseize
-2 Fatal Push
-
-Sideboard
-3 Consign to Memory
-3 Dauthi Voidwalker
-2 Barrowgoyf
-2 Massacre
-1 Brazen Borrower
-1 Fatal Push
-1 Legion's End
-1 Engineered Explosives
-1 Force of Negation
 `,
       // 組み込みサイドプラン（誰が開いても最初から入っている）。例：
       // { name: 'vsホガーク', in: [{ count: 2, name: 'Rest in Peace' }], out: [{ count: 2, name: 'Defense Grid' }] }
