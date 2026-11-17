@@ -59,28 +59,27 @@ Sideboard
       text: `
 4 Ancient Tomb
 2 Atraxa, Grand Unifier
-2 Brainsurge
 4 Chalice of the Void
 3 Chrome Mox
-1 City of Traitors
+2 City of Traitors
 1 Cruel Reality
 1 Curse of Death's Hold
 4 Curse of Misfortunes
 4 Defense Grid
 4 Flooded Strand
 4 Herald of Amity
+3 Impulse
 2 Island
 4 Lotus Petal
+1 Mana Confluence
 4 Overwhelming Splendor
 1 Plains
 1 Raph & Mikey, Troublemakers
-1 Savannah
-2 Scroll Rack
+1 Scroll Rack
 1 Scrubland
 4 Show and Tell
 4 Sink into Stupor
 1 Tundra
-1 Urborg, Tomb of Yawgmoth
 
 SIDEBOARD:
 2 Disruptor Flute
