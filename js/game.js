@@ -21,7 +21,8 @@
   'use strict';
 
   const HAND_SIZE = 7;
-  const ZONES = ['hand', 'library', 'battlefield', 'graveyard', 'exile'];
+  /** sideboard はゲーム中のサイドボード（そこから手札に加えるカードがあるため）。マリガンなどの対象ではない */
+  const ZONES = ['hand', 'library', 'battlefield', 'graveyard', 'exile', 'sideboard'];
   /** moveTo の移動先（top / bottom はライブラリーの一番上・一番下） */
   const MOVE_TARGETS = ['hand', 'battlefield', 'graveyard', 'exile', 'top', 'bottom'];
 
@@ -60,15 +61,22 @@
     game.hand = game.library.splice(0, Math.min(HAND_SIZE, game.library.length));
   }
 
+  /**
+   * deck = { name, main, sideboard? }。sideboard を渡すと、ゲーム中にサイドボードのカードを手札に加えられる
+   * （サイドボードのカードの通し番号はメインの続き）
+   */
   function createGame(deck) {
+    const main = expandDeck(deck.main);
+    const sideboard = expandDeck(deck.sideboard || []).map((c) => ({ ...c, iid: c.iid + main.length }));
     const game = {
       deckName: deck.name,
       turn: 1,
       hand: [],
-      library: shuffle(expandDeck(deck.main)),
+      library: shuffle(main),
       battlefield: [],
       graveyard: [],
       exile: [],
+      sideboard,
       phase: 'opening',
       mulligans: 0,
       bottomSelection: [],
@@ -217,7 +225,7 @@
 
     const i = game[from].findIndex((c) => c.iid === iid);
     const [card] = game[from].splice(i, 1);
-    if (from === 'battlefield') delete card.tapped;
+    if (from === 'battlefield') { delete card.tapped; delete card.counters; } // 場を離れたらタップとカウンターは消える
     if (to === 'top') game.library.unshift(card);
     else game[zone].push(card);
     return card;
@@ -240,6 +248,17 @@
     return card;
   }
 
+  /** 場のカードのカウンターを増やす／減らす（0 より下にはしない）。変わらなければ null */
+  function addCounter(game, iid, delta) {
+    const card = game.battlefield.find((c) => c.iid === iid);
+    if (!card) return null;
+    const next = Math.max(0, (card.counters || 0) + delta);
+    if (next === (card.counters || 0)) return null;
+    if (next === 0) delete card.counters;
+    else card.counters = next;
+    return card;
+  }
+
   /** 場のカードを手札・墓地・追放へ移す（タップ状態は解除） */
   function moveFromBattlefield(game, iid, zone) {
     if (!['hand', 'graveyard', 'exile'].includes(zone) || findZone(game, iid) !== 'battlefield') return null;
@@ -249,7 +268,7 @@
   const api = {
     HAND_SIZE, createGame, cloneGame, totalCards, shuffle, expandDeck, randomInt,
     bottomCount, canMulligan, mulligan, keep, toggleBottom, confirmBottom,
-    playFromHand, draw, tutor, nextTurn, toggleTap, moveFromBattlefield, moveTo, findZone, reorderBattlefield,
+    playFromHand, draw, tutor, nextTurn, toggleTap, moveFromBattlefield, moveTo, findZone, reorderBattlefield, addCounter,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

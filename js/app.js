@@ -620,6 +620,8 @@
     tile.dataset.iid = card.iid;
     tile.dataset.action = 'tap';
     fillCard(tile, card, info);
+    if (card.counters) tile.append(h('span', { className: 'counter-badge', title: t('battlefield.counters', { n: card.counters }) }, card.counters));
+    if (canHover) tile.title += '\n' + t('battlefield.counterHint');
     if (card.iid === highlight) tile.classList.add('is-new');
 
     const slot = h('div', { className: 'slot' + (card.tapped ? ' tapped' : ''), draggable: true },
@@ -740,6 +742,7 @@
     el.nextTurnBtn.disabled = !acting;
     el.library.classList.toggle('locked', !acting);
     el.undoBtn.disabled = history.length === 0;
+    if (match) renderSideboardZone();
   }
 
   /** 手札の最後（加わったカードとドローボタン）が見えるよう、手札の枠を一番下までスクロール */
@@ -870,6 +873,7 @@
   /** ドラッグ中の位置から、どのカードの前に入れるか（null なら一番右）と、目印を付ける場所を求める */
   function dropTarget(e) {
     const slots = [...el.battlefield.querySelectorAll('.slot')].filter((n) => Number(n.dataset.iid) !== dragIid);
+    if (!e.target || !el.battlefield.contains(e.target)) return null; // 場の外
     const over = e.target.closest('.slot');
     if (over && Number(over.dataset.iid) !== dragIid) {
       const r = over.getBoundingClientRect();
@@ -918,7 +922,83 @@
     el.battlefield.querySelectorAll('.dragging').forEach((n) => n.classList.remove('dragging'));
   }
 
+  // ---------- カウンター（パソコンの右クリック：右半分で＋1、左半分で−1。スマホでは使わない） ----------
+
+  let lastTouchAt = 0;
+
+  function onBattlefieldContextMenu(e) {
+    const tile = e.target.closest('[data-action="tap"]');
+    if (!tile || !game) return;
+    e.preventDefault(); // ブラウザのメニューは出さない
+    if (e.pointerType === 'touch' || Date.now() - lastTouchAt < 1000) return; // スマホの長押しでは何もしない
+    const r = tile.getBoundingClientRect();
+    const delta = e.clientX >= r.left + r.width / 2 ? 1 : -1;
+    if (act(() => MTG.addCounter(game, Number(tile.dataset.iid), delta))) renderGame();
+  }
+
+  // ---------- スマホ：長押しで場のカードを並べ替え ----------
+
+  const LONG_PRESS_MS = 300;
+  let touchDrag = null;
+  let suppressClickUntil = 0;
+
+  function cancelTouchDrag() {
+    if (!touchDrag) return;
+    clearTimeout(touchDrag.timer);
+    touchDrag = null;
+    onDragEnd();
+  }
+
+  function onTouchStart(e) {
+    lastTouchAt = Date.now();
+    const slot = e.target.closest('.slot');
+    if (!slot || !game || e.touches.length !== 1 || e.target.closest('[data-move]')) return;
+    const p = e.touches[0];
+    touchDrag = { iid: Number(slot.dataset.iid), slot, x: p.clientX, y: p.clientY, lastX: p.clientX, lastY: p.clientY, active: false };
+    touchDrag.timer = setTimeout(() => {
+      if (!touchDrag) return;
+      touchDrag.active = true;
+      dragIid = touchDrag.iid;
+      slot.classList.add('dragging');
+      hidePreview();
+      if (navigator.vibrate) navigator.vibrate(15);
+    }, LONG_PRESS_MS);
+  }
+
+  function onTouchMove(e) {
+    if (!touchDrag) return;
+    const p = e.touches[0];
+    touchDrag.lastX = p.clientX;
+    touchDrag.lastY = p.clientY;
+    if (!touchDrag.active) {
+      // 長押しの前に指が動いたら、普通のスクロール
+      if (Math.hypot(p.clientX - touchDrag.x, p.clientY - touchDrag.y) > 10) cancelTouchDrag();
+      return;
+    }
+    e.preventDefault(); // 並べ替え中は画面をスクロールしない
+    clearDropMarks();
+    const d = dropTarget({ target: document.elementFromPoint(p.clientX, p.clientY), clientX: p.clientX });
+    if (d) d.mark.classList.add(d.side === 'after' ? 'drop-after' : 'drop-before');
+  }
+
+  function onTouchEnd(e) {
+    if (!touchDrag) return;
+    clearTimeout(touchDrag.timer);
+    if (!touchDrag.active) {
+      touchDrag = null;
+      return;
+    }
+    e.preventDefault(); // 指を離したときのタップ（タップ／アンタップ）を出さない
+    suppressClickUntil = Date.now() + 500;
+    const { iid, lastX, lastY } = touchDrag;
+    const d = dropTarget({ target: document.elementFromPoint(lastX, lastY), clientX: lastX });
+    touchDrag = null;
+    onDragEnd();
+    if (d && act(() => MTG.reorderBattlefield(game, iid, d.beforeIid))) renderGame();
+  }
+
   function onBattlefieldClick(e) {
+    if (Date.now() < suppressClickUntil) return;
     const btn = e.target.closest('[data-action="tap"]');
     if (!btn || !game) return;
     if (act(() => MTG.toggleTap(game, Number(btn.dataset.iid)))) renderGame();
@@ -1022,7 +1102,8 @@
     const { entry, info } = item;
     const ja = !isEn() && info && info.jaName;
     const original = zone === 'main' ? match.deck.main : (match.deck.side || []);
-    const delta = countDelta(zone === 'main' ? match.config.main : match.config.side, original, entry.name);
+    // 増減の印はサイドボーディング中だけ（ゲーム中のサイドボードは手札に加えた分だけ減る）
+    const delta = sideboarding ? countDelta(zone === 'main' ? match.config.main : match.config.side, original, entry.name) : 0;
     const to = zone === 'main' ? 'side' : 'main';
     const deltaBadge = delta !== 0 && h('span', { className: 'delta ' + (delta > 0 ? 'plus' : 'minus') }, delta > 0 ? `+${delta}` : `−${-delta}`);
 
@@ -1030,7 +1111,7 @@
     if (showsImages()) {
       const tile = h('button', {
         type: 'button',
-        className: 'card sb-card sb-tile' + (sideboarding ? ' clickable' : ' locked'),
+        className: 'card sb-card sb-tile clickable',
         title: info ? cardTitle(entry, info) : entry.name,
       });
       fillCard(tile, entry, info);
@@ -1043,7 +1124,7 @@
 
     const btn = h('button', {
       type: 'button',
-      className: 'sb-card' + (sideboarding ? '' : ' locked'),
+      className: 'sb-card',
       title: info ? cardTitle(entry, info) : entry.name,
     },
       h('span', { className: 'qty' }, entry.count),
@@ -1089,15 +1170,27 @@
   }
 
   /** 画面の一番下のサイドボード（いつも表示。メイン・サイドの枚数もここに出す） */
+  /** ゲーム中のサイドボード（手札に加えた分は減っている）を {count, name} の一覧に */
+  function gameSideEntries() {
+    const list = [];
+    game.sideboard.forEach((c) => {
+      const e = list.find((x) => x.name === c.name);
+      if (e) e.count += 1;
+      else list.push({ count: 1, name: c.name });
+    });
+    return list;
+  }
+
   function renderSideboardZone() {
     if (!match) return;
     const counts = MTG.configCounts(match.config);
-    el.sideCount.textContent = `(${counts.side})`;
+    const inGame = !sideboarding && game;
+    el.sideCount.textContent = `(${inGame ? game.sideboard.length : counts.side})`;
     el.deckCounts.textContent = t('sb.counts', counts);
-    el.sideHint.textContent = sideboarding ? t('sb.toMain') : t('sb.locked');
+    el.sideHint.textContent = sideboarding ? t('sb.toMain') : t('sb.toHand');
     const { value, plan } = currentPlan();
     el.sidePlanName.textContent = plan ? t('plan.current', { name: plan.name }) : value === '__custom' ? t('plan.currentCustom') : '';
-    sbList(el.sideList, match.config.side, 'side');
+    sbList(el.sideList, inGame ? gameSideEntries() : match.config.side, 'side');
     if (!sideboarding) diffView(el.sideDiff);
 
     const collapsed = !sideboarding && sideCollapsed;
@@ -1130,7 +1223,18 @@
     const btn = e.target.closest('.sb-card');
     if (!btn || !match) return;
     if (!sideboarding) {
-      showToast(t('sb.lockedToast'));
+      // ゲーム中：サイドボードのカードを手札に加える（そういう効果のカードのため）
+      if (!game) return;
+      if (!canAct()) return notReadyToast();
+      const key = MTG.nameKey(btn.dataset.name);
+      const target = game.sideboard.find((c) => MTG.nameKey(c.name) === key);
+      const card = target && act(() => MTG.moveTo(game, target.iid, 'hand'));
+      if (!card) return;
+      highlight = card.iid;
+      hidePreview();
+      renderGame();
+      revealHandEnd();
+      showToast(t('moved.fromSide', { name: nameOf(card) }));
       return;
     }
     if (MTG.moveOne(match.config, btn.dataset.name, btn.dataset.to)) {
@@ -1316,7 +1420,7 @@
   /** 「ゲーム開始」：今のメインをシャッフルして7枚引く。ここから先は入れ替えできない */
   function startGame() {
     if (!match || MTG.validateConfig(match.config).length) return;
-    game = createGame({ name: match.deck.name, main: match.config.main });
+    game = createGame({ name: match.deck.name, main: match.config.main, sideboard: match.config.side });
     sideboarding = false;
     history = []; // 「元に戻す」でサイドボーディングに戻れないように
     releaseDrawAnchor();
@@ -1466,6 +1570,11 @@
   });
   el.battlefield.addEventListener('drop', onDrop);
   el.battlefield.addEventListener('dragend', onDragEnd);
+  el.battlefield.addEventListener('contextmenu', onBattlefieldContextMenu);
+  el.battlefield.addEventListener('touchstart', onTouchStart, { passive: true });
+  el.battlefield.addEventListener('touchmove', onTouchMove, { passive: false });
+  el.battlefield.addEventListener('touchend', onTouchEnd, { passive: false });
+  el.battlefield.addEventListener('touchcancel', cancelTouchDrag);
   el.gameView.addEventListener('click', onMoveClick);
   el.gameView.addEventListener('mouseover', onPreviewOver);
   el.gameView.addEventListener('mouseleave', hidePreview);

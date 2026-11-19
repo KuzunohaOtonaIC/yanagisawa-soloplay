@@ -305,3 +305,47 @@ test('場のカードの並べ替え', () => {
   assert.equal(reorderBattlefield(g, a.iid, 99999), null); // 落とし先が場にない
   assert.equal(totalCards(g), 60);
 });
+
+const { addCounter } = require('../js/game.js');
+
+test('ゲーム中のサイドボード：渡せば持ち、手札に加えられる（通し番号はメインの続き）', () => {
+  const g = createGame({ name: 'x', main: deck.main, sideboard: [{ count: 2, name: 'Wish Target' }] });
+  assert.equal(g.sideboard.length, 2);
+  assert.deepEqual(g.sideboard.map((c) => c.iid), [61, 62]);
+  assert.equal(totalCards(g), 62);
+  const card = moveTo(g, 61, 'hand');
+  assert.equal(card.name, 'Wish Target');
+  assert.equal(g.hand[g.hand.length - 1], card);
+  assert.equal(g.sideboard.length, 1);
+  assert.equal(findZone(g, 61), 'hand');
+  assert.equal(totalCards(g), 62);
+  // サイドボードは移動先にはならない、マリガンの対象でもない
+  assert.equal(moveTo(g, g.hand[0].iid, 'sideboard'), null);
+  const g2 = createGame({ name: 'x', main: deck.main, sideboard: [{ count: 1, name: 'Wish Target' }] });
+  mulligan(g2);
+  assert.equal(g2.sideboard.length, 1);
+  assert.equal(g2.hand.length + g2.library.length, 60);
+  // 渡さなければ空
+  assert.deepEqual(createGame(deck).sideboard, []);
+});
+
+test('カウンター：増やす・減らす（0より下にはしない）、場を離れたら消える', () => {
+  const g = createGame(deck);
+  const a = g.hand[0];
+  playFromHand(g, a.iid);
+  assert.equal(addCounter(g, a.iid, 1), a);
+  addCounter(g, a.iid, 1);
+  assert.equal(a.counters, 2);
+  addCounter(g, a.iid, -1);
+  assert.equal(a.counters, 1);
+  addCounter(g, a.iid, -1);
+  assert.equal(a.counters, undefined);
+  assert.equal(addCounter(g, a.iid, -1), null); // 0 のまま
+  assert.equal(addCounter(g, g.hand[0].iid, 1), null); // 場にないカード
+  addCounter(g, a.iid, 1); addCounter(g, a.iid, 1); toggleTap(g, a.iid);
+  moveTo(g, a.iid, 'graveyard');
+  assert.equal(a.counters, undefined);
+  assert.equal(a.tapped, undefined);
+  moveTo(g, a.iid, 'battlefield');
+  assert.equal(a.counters, undefined); // 戻ってきてもリセットのまま
+});
